@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Swipe">
+<meta name="theme-color" content="#121212">
+<title>Playlist Swipe</title>
+<style>
+  :root {
+    --bg: #121212; --surface: #1e1e1e; --text: #f5f5f5; --muted: #a7a7a7;
+    --green: #1ed760; --red: #ff4d5e; --radius: 22px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Rubik, Arial, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    overscroll-behavior: none; }
+  header { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header button { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; }
+  main { width: 100%; max-width: 420px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .screen { display: none; } .screen.on { display: block; }
+
+  /* setup */
+  .panel { background: var(--surface); border-radius: var(--radius); padding: 22px; line-height: 1.6; }
+  .panel h2 { margin: 0 0 10px; font-size: 20px; }
+  .panel ol { padding-inline-start: 20px; margin: 8px 0 16px; }
+  .panel a { color: var(--green); }
+  code.copy { display: block; direction: ltr; text-align: left; background: #000; padding: 10px 12px; border-radius: 10px;
+    font-size: 13px; word-break: break-all; cursor: pointer; margin: 6px 0; }
+  input { width: 100%; direction: ltr; padding: 14px; border-radius: 12px; border: 1px solid #333; background: #000;
+    color: var(--text); font-size: 15px; margin: 6px 0 14px; }
+  .btn { width: 100%; padding: 15px; border-radius: 999px; border: 0; background: var(--green); color: #000;
+    font-weight: 700; font-size: 16px; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid #444; }
+
+  /* player */
+  .stage { position: relative; height: min(68vh, 560px); }
+  .card { position: absolute; inset: 0; background: var(--surface); border-radius: var(--radius); overflow: hidden;
+    touch-action: pan-y; user-select: none; cursor: grab; box-shadow: 0 20px 40px rgba(0,0,0,.45);
+    display: flex; flex-direction: column; }
+  .card.anim { transition: transform .3s ease, opacity .3s ease; }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: cover; pointer-events: none; background: #2a2a2a; }
+  .meta { padding: 16px 18px; flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+  .title { font-size: 21px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .artist { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pl { margin-top: auto; font-size: 13px; color: var(--muted); }
+  .pl b { color: var(--text); font-weight: 600; }
+  .stamp { position: absolute; top: 24px; right: 20px; padding: 6px 14px; border: 3px solid var(--red); color: var(--red);
+    border-radius: 10px; font-weight: 800; font-size: 22px; transform: rotate(12deg); opacity: 0; }
+  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+    color: var(--muted); padding: 30px; line-height: 1.7; }
+  .controls { display: flex; justify-content: center; gap: 28px; margin-top: 18px; }
+  .round { width: 66px; height: 66px; border-radius: 50%; border: 0; font-size: 26px; cursor: pointer;
+    background: var(--surface); color: var(--text); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .round.x { color: var(--red); }
+  .round:disabled { opacity: .35; cursor: default; }
+  .hint { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%);
+    background: #fff; color: #000; border-radius: 14px; padding: 12px 16px; display: flex; gap: 14px; align-items: center;
+    font-size: 14px; transition: transform .25s ease; max-width: calc(100% - 32px); z-index: 10; }
+  .toast.on { transform: translate(-50%, 0); }
+  .toast button { background: none; border: 0; color: #0a7d3b; font-weight: 800; font-size: 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Playlist Swipe</h1>
+  <button id="logout" hidden>התנתקות</button>
+</header>
+
+<main>
+  <!-- Setup screen -->
+  <section id="setup" class="screen">
+    <div class="panel">
+      <h2>הגדרה חד־פעמית</h2>
+      <ol>
+        <li>היכנס ל־<a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Spotify Developer Dashboard</a> ולחץ <b>Create app</b>.</li>
+        <li>בשדה <b>Redirect URI</b> הדבק את הכתובת הזו (לחיצה מעתיקה):
+          <code class="copy" id="redirectShow"></code></li>
+        <li>סמן <b>Web API</b> ושמור.</li>
+        <li>העתק את ה־<b>Client ID</b> של האפליקציה והדבק כאן:</li>
+      </ol>
+      <input id="clientId" placeholder="Client ID" autocomplete="off" spellcheck="false">
+      <button class="btn" id="saveId">שמירה והתחברות</button>
+    </div>
+  </section>
+
+  <!-- Login screen -->
+  <section id="login" class="screen">
+    <div class="panel" style="text-align:center">
+      <h2>מתחברים לספוטיפיי</h2>
+      <p style="color:var(--muted)">נגן פלייליסט בספוטיפיי, וכאן תחליק שמאלה על שיר שלא אהבת.</p>
+      <button class="btn" id="loginBtn">התחברות עם Spotify</button>
+      <p><button class="btn ghost" id="resetId" style="margin-top:10px">שינוי Client ID</button></p>
+    </div>
+  </section>
+
+  <!-- Player screen -->
+  <section id="player" class="screen">
+    <div class="stage" id="stage">
+      <div class="empty" id="empty">טוען…</div>
+    </div>
+    <div class="controls">
+      <button class="round x" id="removeBtn" title="הסרה מהפלייליסט" disabled>✕</button>
+      <button class="round" id="skipBtn" title="דילוג בלי להסיר" disabled>⏭</button>
+    </div>
+    <div class="hint" id="hint">החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא</div>
+  </section>
+</main>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="undoBtn" hidden>ביטול</button></div>
+
+<script>
+(() => {
+  const API = 'https://api.spotify.com/v1';
+  const SCOPES = [
+    'user-read-currently-playing', 'user-read-playback-state', 'user-modify-playback-state',
+    'playlist-read-private', 'playlist-read-collaborative',
+    'playlist-modify-private', 'playlist-modify-public'
+  ].join(' ');
+  const REDIRECT = location.origin + location.pathname;
+
+  // ---------- small storage helpers (never crash if storage is blocked) ----------
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const $ = id => document.getElementById(id);
+
+  function show(screen) {
+    for (const s of ['setup', 'login', 'player']) $(s).classList.toggle('on', s === screen);
+    $('logout').hidden = screen !== 'player';
+  }
+
+  // ---------- toast ----------
+  let toastTimer;
+  function toast(msg, undoFn) {
+    $('toastMsg').textContent = msg;
+    const u = $('undoBtn');
+    u.hidden = !undoFn;
+    u.onclick = undoFn ? () => { hideToast(); undoFn(); } : null;
+    $('toast').classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, undoFn ? 6000 : 3000);
+  }
+  function hideToast() { $('toast').classList.remove('on'); }
+
+  // ---------- PKCE auth ----------
+  const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  function randomString(len) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const vals = crypto.getRandomValues(new Uint8Array(len));
+    return Array.from(vals, v => chars[v % chars.length]).join('');
+  }
+
+  async function startLogin() {
+    const clientId = store.get('clientId');
+    const verifier = randomString(64);
+    const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+    store.set('verifier', verifier);
+    const p = new URLSearchParams({
+      response_type: 'code', client_id: clientId, scope: SCOPES,
+      code_challenge_method: 'S256', code_challenge: challenge, redirect_uri: REDIRECT
+    });
+    location.href = 'https://accounts.spotify.com/authorize?' + p;
+  }
+
+  async function tokenRequest(params) {
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: store.get('clientId'), ...params })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error_description || data.error || 'token error');
+    store.set('access', data.access_token);
+    store.set('expires', String(Date.now() + (data.expires_in - 60) * 1000));
+    if (data.refresh_token) store.set('refresh', data.refresh_token);
+  }
+
+  async function handleRedirect() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('error')) { history.replaceState(null, '', REDIRECT); toast('ההתחברות בוטלה'); return; }
+    const code = q.get('code');
+    if (!code) return;
+    history.replaceState(null, '', REDIRECT);
+    await tokenRequest({
+      grant_type: 'authorization_code', code, redirect_uri: REDIRECT, code_verifier: store.get('verifier')
+    });
+    store.del('verifier');
+  }
+
+  async function accessToken() {
+    if (store.get('access') && Date.now() < Number(store.get('expires'))) return store.get('access');
+    if (!store.get('refresh')) throw new Error('not logged in');
+    await tokenRequest({ grant_type: 'refresh_token', refresh_token: store.get('refresh') });
+    return store.get('access');
+  }
+
+  function logout() {
+    ['access', 'refresh', 'expires'].forEach(store.del);
+    stopPolling();
+    show('login');
+  }
+
+  // ---------- API ----------
+  async function api(path, opts = {}, retry = true) {
+    const r = await fetch(API + path, {
+      ...opts,
+      headers: { Authorization: 'Bearer ' + await accessToken(), 'Content-Type': 'application/json', ...(opts.headers || {}) }
+    });
+    if (r.status === 401 && retry) { store.del('access'); return api(path, opts, false); }
+    if (r.status === 204) return null;
+    const text = await r.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!r.ok) {
+      const err = new Error(data?.error?.message || ('HTTP ' + r.status));
+      err.status = r.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // ---------- state ----------
+  let me = null;
+  const playlistCache = {};
+  let current = null;        // { uri, name, artists, image, playlistId, playlistName, canEdit }
+  let busy = false;
+  let pollTimer = null;
+
+  async function playlistInfo(id) {
+    if (playlistCache[id]) return playlistCache[id];
+    try {
+      const p = await api(`/playlists/${id}?fields=name,collaborative,owner(id)`);
+      playlistCache[id] = { name: p.name, canEdit: p.owner?.id === me.id || p.collaborative };
+    } catch {
+      playlistCache[id] = { name: 'פלייליסט', canEdit: false };
+    }
+    return playlistCache[id];
+  }
+
+  async function poll() {
+    if (busy) return;
+    try {
+      const d = await api('/me/player/currently-playing');
+      if (!d || !d.item || d.item.type !== 'track') { current = null; render(); return; }
+      if (current && current.uri === d.item.uri) return; // nothing changed
+      const t = d.item;
+      const next = {
+        uri: t.uri, name: t.name,
+        artists: (t.artists || []).map(a => a.name).join(', '),
+        image: t.album?.images?.[0]?.url || '',
+        playlistId: null, playlistName: null, canEdit: false
+      };
+      if (d.context?.type === 'playlist') {
+        next.playlistId = d.context.uri.split(':').pop();
+        const info = await playlistInfo(next.playlistId);
+        next.playlistName = info.name;
+        next.canEdit = info.canEdit;
+      }
+      current = next;
+      render();
+    } catch (e) {
+      if (e.status === 429) { stopPolling(); setTimeout(startPolling, 15000); }
+      else if (e.message === 'not logged in') logout();
+    }
+  }
+  function startPolling() { stopPolling(); poll(); pollTimer = setInterval(poll, 3000); }
+  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopPolling(); else if ($('player').classList.contains('on')) startPolling();
+  });
+
+  // ---------- rendering ----------
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function render() {
+    const stage = $('stage');
+    stage.innerHTML = '';
+    $('removeBtn').disabled = !(current && current.canEdit);
+    $('skipBtn').disabled = !current;
+    if (!current) {
+      stage.innerHTML = '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶</div>';
+      $('hint').textContent = 'החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא';
+      return;
+    }
+    let plLine;
+    if (!current.playlistId) plLine = 'השיר לא מתנגן מתוך פלייליסט – אפשר רק לדלג';
+    else if (!current.canEdit) plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b> – לא פלייליסט שלך, אפשר רק לדלג`;
+    else plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b>`;
+    $('hint').textContent = current.canEdit
+      ? 'החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא'
+      : 'אפשר לדלג, אבל לא להסיר מהפלייליסט הזה';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <img src="${esc(current.image)}" alt="">
+      <div class="stamp">להסיר</div>
+      <div class="meta">
+        <div class="title">${esc(current.name)}</div>
+        <div class="artist">${esc(current.artists)}</div>
+        <div class="pl">${plLine}</div>
+      </div>`;
+    stage.appendChild(card);
+    attachSwipe(card);
+  }
+
+  // ---------- swipe ----------
+  function attachSwipe(card) {
+    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false;
+    const stamp = card.querySelector('.stamp');
+
+    card.addEventListener('pointerdown', e => {
+      if (busy) return;
+      dragging = true; decided = false; dx = 0;
+      startX = e.clientX; startY = e.clientY;
+      card.classList.remove('anim');
+      card.setPointerCapture(e.pointerId);
+    });
+    card.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const mx = e.clientX - startX, my = e.clientY - startY;
+      if (!decided) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        decided = true;
+        if (Math.abs(my) > Math.abs(mx)) { dragging = false; return; } // vertical = ignore
+      }
+      dx = current?.canEdit ? Math.min(mx, 30) : Math.max(Math.min(mx, 30), -40); // only left is meaningful
+      card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
+      stamp.style.opacity = current?.canEdit ? Math.min(1, -dx / 110) : 0;
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      card.classList.add('anim');
+      if (current?.canEdit && dx < -110) {
+        flyOut(card);
+        removeCurrent();
+      } else {
+        card.style.transform = '';
+        stamp.style.opacity = 0;
+      }
+    };
+    card.addEventListener('pointerup', end);
+    card.addEventListener('pointercancel', end);
+  }
+
+  function flyOut(card) {
+    card.classList.add('anim');
+    card.style.transform = 'translateX(-140%) rotate(-24deg)';
+    card.style.opacity = '0';
+  }
+
+  // ---------- actions ----------
+  async function removeCurrent() {
+    if (!current?.canEdit || busy) return;
+    busy = true;
+    const removed = { ...current };
+    try {
+      await api(`/playlists/${removed.playlistId}/items`, {
+        method: 'DELETE',
+        body: JSON.stringify({ items: [{ uri: removed.uri }] })
+      });
+      try { await api('/me/player/next', { method: 'POST' }); } catch {}
+      toast(`„${removed.name}" הוסר`, () => undoRemove(removed));
+    } catch (e) {
+      toast(e.status === 403 ? 'אין הרשאה לערוך את הפלייליסט הזה' : 'ההסרה נכשלה, נסה שוב');
+      current = null;
+    } finally {
+      busy = false;
+      setTimeout(poll, 700);
+    }
+  }
+
+  async function undoRemove(item) {
+    try {
+      await api(`/playlists/${item.playlistId}/items`, {
+        method: 'POST',
+        body: JSON.stringify({ uris: [item.uri] })
+      });
+      toast('השיר חזר לפלייליסט (בסוף הרשימה)');
+    } catch {
+      toast('לא הצלחתי להחזיר את השיר');
+    }
+  }
+
+  async function skip() {
+    if (!current || busy) return;
+    busy = true;
+    try { await api('/me/player/next', { method: 'POST' }); }
+    catch { toast('הדילוג נכשל – ודא שספוטיפיי פתוח ומנגן'); }
+    finally { busy = false; setTimeout(poll, 700); }
+  }
+
+  // ---------- wiring ----------
+  $('redirectShow').textContent = REDIRECT;
+  $('redirectShow').onclick = () => {
+    navigator.clipboard?.writeText(REDIRECT).then(() => toast('הכתובת הועתקה'), () => {});
+  };
+  $('saveId').onclick = () => {
+    const v = $('clientId').value.trim();
+    if (!/^[a-f0-9]{32}$/i.test(v)) { toast('ה־Client ID נראה לא תקין (32 תווים)'); return; }
+    store.set('clientId', v);
+    startLogin();
+  };
+  $('loginBtn').onclick = startLogin;
+  $('resetId').onclick = () => { store.del('clientId'); show('setup'); };
+  $('logout').onclick = logout;
+  $('removeBtn').onclick = () => {
+    const card = document.querySelector('.card');
+    if (card && current?.canEdit) flyOut(card);
+    removeCurrent();
+  };
+  $('skipBtn').onclick = skip;
+
+  // ---------- boot ----------
+  (async () => {
+    if (!store.get('clientId')) { show('setup'); return; }
+    try { await handleRedirect(); } catch (e) { toast('ההתחברות נכשלה: ' + e.message); }
+    if (!store.get('refresh')) { show('login'); return; }
+    try {
+      me = await api('/me');
+      show('player');
+      startPolling();
+    } catch (e) {
+      toast('ההתחברות פגה, התחבר שוב');
+      logout();
+    }
+  })();
+})();
+</script>
+</body>
+</html>
