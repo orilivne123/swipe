@@ -1,4 +1,4 @@
-# Playlist Swipe
+﻿# Playlist Swipe
 
 A tiny phone web app: shows the song currently playing on Spotify as a card. Swipe left → the song is removed from the playlist and Spotify skips to the next song. ⏭ button skips without removing. "ביטול" (undo) re-adds the removed song at the end of the playlist.
 
@@ -8,7 +8,8 @@ A tiny phone web app: shows the song currently playing on Spotify as a card. Swi
 - UI text is Hebrew, RTL, masculine form.
 
 ## Structure
-- Everything is in one file: `index.html` (HTML + CSS + JS, no build step, no dependencies).
+- App code is in one file: `index.html` (HTML + CSS + JS, no build step, no dependencies). PWA support files: `manifest.json`, `sw.js` (network-first), `icon-*.png`.
+- Tabs: now playing (swipe left = remove, right = like into the playlist "אהבתי מ-Swipe"), discovery mode (plays N seconds from ~40% of each track; sources: own playlist or Spotify search; optional Last.fm key for similar tracks), playlists picker, stats. Undo history (last 20) and stats log live in localStorage.
 - Hosted on GitHub Pages: https://orilivne123.github.io/swipe/ (branch `main`, root).
 - Deploy = commit `index.html` to `main`; Pages updates in ~1–2 minutes.
 
@@ -27,3 +28,6 @@ A tiny phone web app: shows the song currently playing on Spotify as a card. Swi
 
 ## History / fixes
 - Player endpoints (e.g. `/me/player/next`) can return 200 with a non-JSON body. `api()` parses JSON defensively and treats any `r.ok` as success — fixed a false "הדילוג נכשל" error.
+
+- Discovery/like features (branch `feature/discovery-mode`) are untested against live Spotify: `POST /me/playlists`, `GET /playlists/{id}/items`, `GET /search` (limit 10), `PUT /me/player/play` with `position_ms` and `PUT /me/player/pause`. Not built: shared mode with a friend (needs a server).
+
