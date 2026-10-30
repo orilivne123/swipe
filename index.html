@@ -109,8 +109,9 @@
 
   .toast { position: fixed; left: 50%; bottom: max(90px, env(safe-area-inset-bottom)); transform: translate(-50%, 240%);
     background: #fff; color: #000; border-radius: 14px; padding: 12px 16px; display: flex; gap: 14px; align-items: center;
-    font-size: 14px; transition: transform .25s ease; max-width: calc(100% - 32px); z-index: 30; }
-  .toast.on { transform: translate(-50%, 0); }
+    font-size: 14px; transition: transform .25s ease, opacity .25s ease; max-width: calc(100% - 32px); z-index: 30;
+    opacity: 0; pointer-events: none; }
+  .toast.on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
   .toast button { background: none; border: 0; color: #0a7d3b; font-weight: 800; font-size: 14px; cursor: pointer; }
   .hap { position: fixed; opacity: 0; pointer-events: none; top: -50px; }
 </style>
@@ -158,6 +159,7 @@
     </div>
     <div class="controls">
       <button class="round x" id="removeBtn" title="הסרה מהפלייליסט" disabled>✕</button>
+      <button class="round" id="pauseBtn" title="עצירה / המשך" disabled>⏸</button>
       <button class="round" id="skipBtn" title="דילוג בלי להסיר" disabled>⏭</button>
       <button class="round heart" id="likeBtn" title="אהבתי" disabled>♥</button>
     </div>
@@ -191,6 +193,7 @@
       <div class="stage" id="dStage"></div>
       <div class="controls">
         <button class="round x" id="dNo" title="הבא">✕</button>
+        <button class="round" id="dPause" title="עצירה / המשך">⏸</button>
         <button class="round" id="dJump" title="קפוץ קדימה בשיר">⏩</button>
         <button class="round heart" id="dYes" title="אהבתי">♥</button>
       </div>
@@ -283,6 +286,12 @@
     toastTimer = setTimeout(hideToast, undoFn ? 6000 : 3000);
   }
   function hideToast() { $('toast').classList.remove('on'); }
+  // error toast that shows the real reason (status + Spotify's message) and stays longer
+  function errToast(what, e) {
+    toast(`${what}: ${e?.status ? e.status + ' ' : ''}${e?.message || ''}`);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 9000);
+  }
 
   // ---------- haptics (Android vibrate; iPhone via the switch-checkbox trick) ----------
   function haptic(ms = 15) {
@@ -585,6 +594,7 @@
     try {
       const d = await api('/me/player/currently-playing');
       if (!d || !d.item || d.item.type !== 'track') { current = null; render(); return; }
+      setPlaying(d.is_playing !== false);
       if (current && current.uri === d.item.uri) return; // nothing changed
       const t = d.item;
       const next = { ...normTrack(t), playlistId: null, playlistName: null, canEdit: false };
@@ -614,6 +624,7 @@
     const liked = !!current && likedSet.has(current.uri);
     $('removeBtn').disabled = !(current && current.canEdit);
     $('skipBtn').disabled = !current;
+    $('pauseBtn').disabled = !current;
     $('likeBtn').disabled = !current || liked;
     if (!current) {
       stage.innerHTML = '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶<br>או בחר פלייליסט בלשונית „פלייליסטים"</div>';
@@ -681,6 +692,21 @@
       toast(`נוסף ל„${LIKES_NAME}" 💚`, () => unlike(c));
     }
     setTimeout(render, 350);
+  }
+
+  let playing = true;
+  function setPlaying(p) {
+    playing = p;
+    $('pauseBtn').textContent = p ? '⏸' : '▶';
+    $('dPause').textContent = p ? '⏸' : '▶';
+  }
+  async function togglePause() {
+    const wasPlaying = playing;
+    try {
+      if (wasPlaying) await api('/me/player/pause', { method: 'PUT' });
+      else await api('/me/player/play', { method: 'PUT' });
+      setPlaying(!wasPlaying);
+    } catch { toast('העצירה נכשלה – ודא שספוטיפיי פתוח'); }
   }
 
   async function skip() {
@@ -765,11 +791,17 @@
     setDView(false);
     $('dLfm').value = store.get('lfmKey') || '';
     try {
-      const own = (await loadPlaylists()).filter(p => p.own);
+      const all = await loadPlaylists();
+      const own = all.filter(p => p.own);
+      const list = own.length ? own : all;   // fall back if the owner field is missing
       const keep = $('dList').value;
-      $('dList').innerHTML = own.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      $('dList').innerHTML = list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')
+        || '<option value="">לא נמצאו פלייליסטים</option>';
       if (keep) $('dList').value = keep;
-    } catch {}
+    } catch (e) {
+      $('dList').innerHTML = `<option value="">שגיאה בטעינת פלייליסטים (${esc(e.status || e.message)})</option>`;
+      errToast('לא הצלחתי לטעון פלייליסטים', e);
+    }
   }
   function setDView(run) { $('dSetup').hidden = run; $('dRun').hidden = !run; }
 
@@ -797,7 +829,7 @@
       D.active = true;
       setDView(true);
       dNext();
-    } catch { toast('לא הצלחתי לטעון שירים'); }
+    } catch (e) { errToast('לא הצלחתי לטעון שירים', e); }
     finally { $('dStartBtn').disabled = false; }
   }
 
@@ -837,7 +869,8 @@
     try {
       await api('/me/player/play', { method: 'PUT', body: JSON.stringify({ uris: [t.uri], position_ms: start }) });
     } catch (e) {
-      toast(e.status === 404 ? 'פתח את ספוטיפיי במכשיר כלשהו ונגן משהו, ואז נסה שוב' : 'ההשמעה נכשלה (נדרש Premium)');
+      if (e.status === 404) toast('פתח את ספוטיפיי במכשיר כלשהו ונגן שיר כלשהו, ואז נסה שוב');
+      else errToast('ההשמעה נכשלה', e);
       return;
     }
     if (seq !== D.seq) return;
@@ -860,7 +893,8 @@
     const stage = $('dStage');
     stage.innerHTML = '';
     const t = D.cur;
-    $('dNo').disabled = $('dYes').disabled = $('dJump').disabled = !t;
+    $('dNo').disabled = $('dYes').disabled = $('dJump').disabled = $('dPause').disabled = !t;
+    if (t) setPlaying(true);
     if (!t) {
       stage.innerHTML = `<div class="empty">נגמרו השירים 🎉<br>שמרת ${D.kept} מתוך ${D.heard}.<br><span style="font-size:13px">השירים ב„${esc(LIKES_NAME)}"</span></div>`;
       $('dHint').textContent = '';
@@ -903,6 +937,20 @@
     if (D.loading || !D.cur) return;
     flyOut(card, like ? 1 : -1); haptic(25);
     dDecide(like);
+  }
+
+  async function dTogglePause() {
+    const t = D.cur;
+    if (!t) return;
+    if (playing) {
+      clearTimeout(D.timer); D.seq++;
+      const i = document.getElementById('barI');
+      if (i) { i.style.width = getComputedStyle(i).width; i.style.transition = 'none'; }
+      try { await api('/me/player/pause', { method: 'PUT' }); setPlaying(false); } catch { toast('העצירה נכשלה'); }
+    } else {
+      setPlaying(true);
+      dPlay(t, D.pos || undefined);
+    }
   }
 
   async function dJump() {
@@ -970,6 +1018,8 @@
   $('dNo').onclick = () => dBtn(false);
   $('dYes').onclick = () => dBtn(true);
   $('dJump').onclick = dJump;
+  $('dPause').onclick = dTogglePause;
+  $('pauseBtn').onclick = togglePause;
   $('dStop').onclick = dStop;
 
   // ---------- boot ----------
