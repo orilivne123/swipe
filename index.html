@@ -7,39 +7,54 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Swipe">
 <meta name="theme-color" content="#121212">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Playlist Swipe</title>
 <style>
   :root {
     --bg: #121212; --surface: #1e1e1e; --text: #f5f5f5; --muted: #a7a7a7;
-    --green: #1ed760; --red: #ff4d5e; --radius: 22px;
+    --green: #1ed760; --red: #ff4d5e; --radius: 22px; --tint: #121212;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", Rubik, Arial, sans-serif; }
   body { display: flex; flex-direction: column; align-items: center;
-    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, var(--tint) 0%, var(--bg) 65%) fixed;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(10px, env(safe-area-inset-bottom));
     overscroll-behavior: none; }
   header { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header .hbtns { display: flex; gap: 14px; }
   header button { background: none; border: 0; color: var(--muted); font-size: 14px; cursor: pointer; }
-  main { width: 100%; max-width: 420px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  main { width: 100%; max-width: 420px; flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
   .screen { display: none; } .screen.on { display: block; }
+
+  /* tabs */
+  #tabs { width: 100%; max-width: 420px; display: flex; gap: 4px; margin-top: 10px; background: rgba(0,0,0,.35); border-radius: 18px; padding: 4px; }
+  #tabs button { flex: 1; background: none; border: 0; color: var(--muted); padding: 8px 2px; border-radius: 14px; font-size: 12px; cursor: pointer; line-height: 1.4; }
+  #tabs button b { display: block; font-size: 18px; font-weight: 400; }
+  #tabs button.on { background: var(--surface); color: var(--text); }
 
   /* setup */
   .panel { background: var(--surface); border-radius: var(--radius); padding: 22px; line-height: 1.6; }
   .panel h2 { margin: 0 0 10px; font-size: 20px; }
   .panel ol { padding-inline-start: 20px; margin: 8px 0 16px; }
   .panel a { color: var(--green); }
+  .panel label { display: block; font-size: 14px; color: var(--muted); margin-top: 6px; }
   code.copy { display: block; direction: ltr; text-align: left; background: #000; padding: 10px 12px; border-radius: 10px;
     font-size: 13px; word-break: break-all; cursor: pointer; margin: 6px 0; }
-  input { width: 100%; direction: ltr; padding: 14px; border-radius: 12px; border: 1px solid #333; background: #000;
+  input, select { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #333; background: #000;
     color: var(--text); font-size: 15px; margin: 6px 0 14px; }
+  input.ltr { direction: ltr; }
+  input[type=checkbox] { width: auto; margin: 0 0 0 8px; }
+  .check { display: flex; align-items: center; color: var(--text) !important; margin: 0 0 14px !important; }
   .btn { width: 100%; padding: 15px; border-radius: 999px; border: 0; background: var(--green); color: #000;
     font-weight: 700; font-size: 16px; cursor: pointer; }
   .btn.ghost { background: transparent; color: var(--text); border: 1px solid #444; }
+  .btn:disabled { opacity: .5; }
 
-  /* player */
-  .stage { position: relative; height: min(68vh, 560px); }
+  /* cards */
+  .stage { position: relative; height: min(62vh, 520px); }
   .card { position: absolute; inset: 0; background: var(--surface); border-radius: var(--radius); overflow: hidden;
     touch-action: pan-y; user-select: none; cursor: grab; box-shadow: 0 20px 40px rgba(0,0,0,.45);
     display: flex; flex-direction: column; }
@@ -50,28 +65,63 @@
   .artist { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pl { margin-top: auto; font-size: 13px; color: var(--muted); }
   .pl b { color: var(--text); font-weight: 600; }
-  .stamp { position: absolute; top: 24px; right: 20px; padding: 6px 14px; border: 3px solid var(--red); color: var(--red);
-    border-radius: 10px; font-weight: 800; font-size: 22px; transform: rotate(12deg); opacity: 0; }
-  .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
+  .stamp { position: absolute; top: 24px; padding: 6px 14px; border: 3px solid; border-radius: 10px;
+    font-weight: 800; font-size: 22px; opacity: 0; }
+  .stamp.no { right: 20px; color: var(--red); border-color: var(--red); transform: rotate(12deg); }
+  .stamp.yes { left: 20px; color: var(--green); border-color: var(--green); transform: rotate(-12deg); }
+  .badge { position: absolute; top: 14px; left: 14px; background: rgba(0,0,0,.6); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+  .bar { height: 5px; background: #333; border-radius: 5px; overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--green); }
+  .empty { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center; text-align: center;
     color: var(--muted); padding: 30px; line-height: 1.7; }
-  .controls { display: flex; justify-content: center; gap: 28px; margin-top: 18px; }
-  .round { width: 66px; height: 66px; border-radius: 50%; border: 0; font-size: 26px; cursor: pointer;
+  .controls { display: flex; justify-content: center; gap: 22px; margin-top: 18px; }
+  .round { width: 62px; height: 62px; border-radius: 50%; border: 0; font-size: 24px; cursor: pointer;
     background: var(--surface); color: var(--text); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
   .round.x { color: var(--red); }
+  .round.heart { color: var(--green); }
   .round:disabled { opacity: .35; cursor: default; }
   .hint { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
 
-  .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%);
+  /* lists */
+  .list { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 14px; padding: 10px; }
+  .row img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #2a2a2a; }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .nm small { display: block; color: var(--muted); }
+  .row button { background: #2d2d2d; color: var(--text); border: 0; border-radius: 999px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .row button.g { background: var(--green); color: #000; font-weight: 700; }
+
+  /* stats */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .tile { background: var(--surface); border-radius: 16px; padding: 14px; text-align: center; }
+  .tile b { display: block; font-size: 30px; color: var(--green); }
+  .tile span { font-size: 13px; color: var(--muted); }
+  .top { background: var(--surface); border-radius: 16px; padding: 14px; }
+  .top h3 { margin: 0 0 8px; font-size: 15px; }
+  .top div { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+
+  /* sheet */
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+  .sheet[hidden] { display: none; }
+  .sheetBox { width: 100%; max-width: 420px; background: var(--surface); border-radius: 22px 22px 0 0; padding: 18px; max-height: 75vh; display: flex; flex-direction: column; gap: 10px; }
+  .sheetBox h3 { margin: 0; }
+  .sheetBox .list { max-height: 50vh; }
+
+  .toast { position: fixed; left: 50%; bottom: max(90px, env(safe-area-inset-bottom)); transform: translate(-50%, 240%);
     background: #fff; color: #000; border-radius: 14px; padding: 12px 16px; display: flex; gap: 14px; align-items: center;
-    font-size: 14px; transition: transform .25s ease; max-width: calc(100% - 32px); z-index: 10; }
+    font-size: 14px; transition: transform .25s ease; max-width: calc(100% - 32px); z-index: 30; }
   .toast.on { transform: translate(-50%, 0); }
   .toast button { background: none; border: 0; color: #0a7d3b; font-weight: 800; font-size: 14px; cursor: pointer; }
+  .hap { position: fixed; opacity: 0; pointer-events: none; top: -50px; }
 </style>
 </head>
 <body>
 <header>
   <h1>🎧 Playlist Swipe</h1>
-  <button id="logout" hidden>התנתקות</button>
+  <div class="hbtns">
+    <button id="histBtn" hidden title="שירים שהסרת">🕘 היסטוריה</button>
+    <button id="logout" hidden>התנתקות</button>
+  </div>
 </header>
 
 <main>
@@ -86,7 +136,7 @@
         <li>סמן <b>Web API</b> ושמור.</li>
         <li>העתק את ה־<b>Client ID</b> של האפליקציה והדבק כאן:</li>
       </ol>
-      <input id="clientId" placeholder="Client ID" autocomplete="off" spellcheck="false">
+      <input class="ltr" id="clientId" placeholder="Client ID" autocomplete="off" spellcheck="false">
       <button class="btn" id="saveId">שמירה והתחברות</button>
     </div>
   </section>
@@ -95,13 +145,13 @@
   <section id="login" class="screen">
     <div class="panel" style="text-align:center">
       <h2>מתחברים לספוטיפיי</h2>
-      <p style="color:var(--muted)">נגן פלייליסט בספוטיפיי, וכאן תחליק שמאלה על שיר שלא אהבת.</p>
+      <p style="color:var(--muted)">נגן פלייליסט בספוטיפיי, וכאן תחליק שמאלה על שיר שלא אהבת וימינה על שיר שאהבת.</p>
       <button class="btn" id="loginBtn">התחברות עם Spotify</button>
       <p><button class="btn ghost" id="resetId" style="margin-top:10px">שינוי Client ID</button></p>
     </div>
   </section>
 
-  <!-- Player screen -->
+  <!-- Now playing -->
   <section id="player" class="screen">
     <div class="stage" id="stage">
       <div class="empty" id="empty">טוען…</div>
@@ -109,12 +159,77 @@
     <div class="controls">
       <button class="round x" id="removeBtn" title="הסרה מהפלייליסט" disabled>✕</button>
       <button class="round" id="skipBtn" title="דילוג בלי להסיר" disabled>⏭</button>
+      <button class="round heart" id="likeBtn" title="אהבתי" disabled>♥</button>
     </div>
-    <div class="hint" id="hint">החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא</div>
+    <div class="hint" id="hint"></div>
+  </section>
+
+  <!-- Discover -->
+  <section id="discover" class="screen">
+    <div class="panel" id="dSetup">
+      <h2>🔍 מצב גילוי</h2>
+      <p style="margin:0 0 8px;color:var(--muted)">כל שיר מתנגן כמה שניות מאמצע השיר. ימינה = שמור ב„אהבתי מ־Swipe", שמאלה = הבא.</p>
+      <label>מאיפה לגלות?</label>
+      <select id="dType">
+        <option value="playlist">פלייליסט שלי (מיון / ניקוי)</option>
+        <option value="search">חיפוש חופשי (ז׳אנר, אמן, שנה)</option>
+      </select>
+      <div id="dPlWrap">
+        <select id="dList"></select>
+        <label class="check"><input type="checkbox" id="dRemove">להסיר מהפלייליסט המקורי בהחלקה שמאלה</label>
+      </div>
+      <div id="dQWrap" hidden>
+        <input id="dQuery" placeholder="למשל: indie pop, Queen, 90s rock" autocomplete="off">
+      </div>
+      <label>כמה שניות לשמוע מכל שיר?</label>
+      <input id="dSecs" type="number" min="5" max="60" value="20" inputmode="numeric">
+      <label>מפתח Last.fm (לא חובה – מוסיף שירים דומים למה שאהבת)</label>
+      <input class="ltr" id="dLfm" placeholder="Last.fm API key" autocomplete="off" spellcheck="false">
+      <button class="btn" id="dStartBtn">התחלה</button>
+    </div>
+    <div id="dRun" hidden>
+      <div class="stage" id="dStage"></div>
+      <div class="controls">
+        <button class="round x" id="dNo" title="הבא">✕</button>
+        <button class="round" id="dJump" title="קפוץ קדימה בשיר">⏩</button>
+        <button class="round heart" id="dYes" title="אהבתי">♥</button>
+      </div>
+      <div class="hint" id="dHint"></div>
+      <p><button class="btn ghost" id="dStop" style="margin-top:6px">סיום</button></p>
+    </div>
+  </section>
+
+  <!-- Playlists -->
+  <section id="lists" class="screen">
+    <div class="panel" style="padding:14px">
+      <h2 style="font-size:18px">📂 הפלייליסטים שלי</h2>
+      <div class="list" id="plRows">טוען…</div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section id="stats" class="screen">
+    <div id="statsBody"></div>
   </section>
 </main>
 
+<nav id="tabs" hidden>
+  <button data-tab="player"><b>🎧</b>עכשיו</button>
+  <button data-tab="discover"><b>🔍</b>גילוי</button>
+  <button data-tab="lists"><b>📂</b>פלייליסטים</button>
+  <button data-tab="stats"><b>📊</b>סטטיסטיקות</button>
+</nav>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheetBox">
+    <h3>🕘 שירים שהסרת</h3>
+    <div class="list" id="histList"></div>
+    <button class="btn ghost" id="closeSheet">סגירה</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="undoBtn" hidden>ביטול</button></div>
+<label class="hap" aria-hidden="true"><input type="checkbox" switch id="hap"></label>
 
 <script>
 (() => {
@@ -125,6 +240,9 @@
     'playlist-modify-private', 'playlist-modify-public'
   ].join(' ');
   const REDIRECT = location.origin + location.pathname;
+  const LIKES_NAME = 'אהבתי מ-Swipe';
+  const SCREENS = ['setup', 'login', 'player', 'discover', 'lists', 'stats'];
+  const APP_SCREENS = ['player', 'discover', 'lists', 'stats'];
 
   // ---------- small storage helpers (never crash if storage is blocked) ----------
   const store = {
@@ -132,11 +250,25 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
     del(k) { try { localStorage.removeItem(k); } catch {} }
   };
+  const jget = (k, d) => { try { return JSON.parse(store.get(k)) ?? d; } catch { return d; } };
+  const jset = (k, v) => store.set(k, JSON.stringify(v));
   const $ = id => document.getElementById(id);
+  const enc = encodeURIComponent;
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
+  let currentScreen = null;
   function show(screen) {
-    for (const s of ['setup', 'login', 'player']) $(s).classList.toggle('on', s === screen);
-    $('logout').hidden = screen !== 'player';
+    currentScreen = screen;
+    SCREENS.forEach(s => $(s).classList.toggle('on', s === screen));
+    const inApp = APP_SCREENS.includes(screen);
+    $('logout').hidden = !inApp; $('histBtn').hidden = !inApp; $('tabs').hidden = !inApp;
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === screen));
+    if (screen === 'player') startPolling(); else stopPolling();
+    if (screen !== 'discover') dPause();
+    if (screen === 'lists') renderLists();
+    if (screen === 'stats') renderStats();
+    if (screen === 'discover') prepDiscover();
   }
 
   // ---------- toast ----------
@@ -151,6 +283,39 @@
     toastTimer = setTimeout(hideToast, undoFn ? 6000 : 3000);
   }
   function hideToast() { $('toast').classList.remove('on'); }
+
+  // ---------- haptics (Android vibrate; iPhone via the switch-checkbox trick) ----------
+  function haptic(ms = 15) {
+    try {
+      if (navigator.vibrate) { navigator.vibrate(ms); return; }
+      $('hap').parentElement.click();
+    } catch {}
+  }
+
+  // ---------- album colour -> page tint ----------
+  function setTint(rgb) {
+    document.documentElement.style.setProperty('--tint', rgb || '#121212');
+    const m = document.querySelector('meta[name=theme-color]');
+    if (m) m.content = rgb || '#121212';
+  }
+  function tint(url) {
+    if (!url) { setTint(null); return; }
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = c.height = 8;
+        const x = c.getContext('2d'); x.drawImage(im, 0, 0, 8, 8);
+        const d = x.getImageData(0, 0, 8, 8).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+        const k = 0.6 / n;
+        setTint(`rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`);
+      } catch { setTint(null); }
+    };
+    im.onerror = () => setTint(null);
+    im.src = url;
+  }
 
   // ---------- PKCE auth ----------
   const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -207,7 +372,7 @@
 
   function logout() {
     ['access', 'refresh', 'expires'].forEach(store.del);
-    stopPolling();
+    stopPolling(); dPause();
     show('login');
   }
 
@@ -220,7 +385,8 @@
     if (r.status === 401 && retry) { store.del('access'); return api(path, opts, false); }
     if (r.status === 204) return null;
     const text = await r.text();
-    const data = text ? JSON.parse(text) : null;
+    let data = null;
+    if (text) { try { data = JSON.parse(text); } catch {} }   // player endpoints may return a non-JSON body
     if (!r.ok) {
       const err = new Error(data?.error?.message || ('HTTP ' + r.status));
       err.status = r.status;
@@ -228,13 +394,27 @@
     }
     return data;
   }
+  const rel = url => url.replace(API, '');
 
   // ---------- state ----------
   let me = null;
   const playlistCache = {};
+  let plList = null;
   let current = null;        // { uri, name, artists, image, playlistId, playlistName, canEdit }
   let busy = false;
   let pollTimer = null;
+  const likedSet = new Set(jget('liked', []));
+  const saveLiked = () => jset('liked', [...likedSet].slice(-400));
+
+  function normTrack(t) {
+    if (!t || t.type !== 'track' || !t.uri || t.is_local) return null;
+    return {
+      uri: t.uri, name: t.name,
+      artists: (t.artists || []).map(a => a.name).join(', '),
+      image: t.album?.images?.[0]?.url || '',
+      duration: t.duration_ms || 200000
+    };
+  }
 
   async function playlistInfo(id) {
     if (playlistCache[id]) return playlistCache[id];
@@ -247,81 +427,99 @@
     return playlistCache[id];
   }
 
-  async function poll() {
-    if (busy) return;
-    try {
-      const d = await api('/me/player/currently-playing');
-      if (!d || !d.item || d.item.type !== 'track') { current = null; render(); return; }
-      if (current && current.uri === d.item.uri) return; // nothing changed
-      const t = d.item;
-      const next = {
-        uri: t.uri, name: t.name,
-        artists: (t.artists || []).map(a => a.name).join(', '),
-        image: t.album?.images?.[0]?.url || '',
-        playlistId: null, playlistName: null, canEdit: false
-      };
-      if (d.context?.type === 'playlist') {
-        next.playlistId = d.context.uri.split(':').pop();
-        const info = await playlistInfo(next.playlistId);
-        next.playlistName = info.name;
-        next.canEdit = info.canEdit;
+  async function loadPlaylists() {
+    if (plList) return plList;
+    const out = [];
+    let path = '/me/playlists?limit=50';
+    for (let i = 0; i < 4 && path; i++) {
+      const r = await api(path);
+      for (const p of r?.items || []) {
+        if (p) out.push({ id: p.id, name: p.name, image: p.images?.[0]?.url || '', own: p.owner?.id === me.id || !!p.collaborative });
       }
-      current = next;
-      render();
-    } catch (e) {
-      if (e.status === 429) { stopPolling(); setTimeout(startPolling, 15000); }
-      else if (e.message === 'not logged in') logout();
+      path = r?.next ? rel(r.next) : null;
     }
-  }
-  function startPolling() { stopPolling(); poll(); pollTimer = setInterval(poll, 3000); }
-  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopPolling(); else if ($('player').classList.contains('on')) startPolling();
-  });
-
-  // ---------- rendering ----------
-  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-
-  function render() {
-    const stage = $('stage');
-    stage.innerHTML = '';
-    $('removeBtn').disabled = !(current && current.canEdit);
-    $('skipBtn').disabled = !current;
-    if (!current) {
-      stage.innerHTML = '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶</div>';
-      $('hint').textContent = 'החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא';
-      return;
-    }
-    let plLine;
-    if (!current.playlistId) plLine = 'השיר לא מתנגן מתוך פלייליסט – אפשר רק לדלג';
-    else if (!current.canEdit) plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b> – לא פלייליסט שלך, אפשר רק לדלג`;
-    else plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b>`;
-    $('hint').textContent = current.canEdit
-      ? 'החלקה שמאלה = הסרה מהפלייליסט ומעבר לשיר הבא'
-      : 'אפשר לדלג, אבל לא להסיר מהפלייליסט הזה';
-
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <img src="${esc(current.image)}" alt="">
-      <div class="stamp">להסיר</div>
-      <div class="meta">
-        <div class="title">${esc(current.name)}</div>
-        <div class="artist">${esc(current.artists)}</div>
-        <div class="pl">${plLine}</div>
-      </div>`;
-    stage.appendChild(card);
-    attachSwipe(card);
+    plList = out;
+    return out;
   }
 
-  // ---------- swipe ----------
-  function attachSwipe(card) {
-    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false;
-    const stamp = card.querySelector('.stamp');
+  async function playlistTracks(id) {
+    const out = [];
+    let path = `/playlists/${id}/items?limit=100`;
+    for (let i = 0; i < 6 && path; i++) {
+      const r = await api(path);
+      for (const x of r?.items || []) { const t = normTrack(x?.item || x?.track); if (t) out.push(t); }
+      path = r?.next ? rel(r.next) : null;
+    }
+    return out;
+  }
+
+  // ---------- stats log + history ----------
+  function logEvent(type, artists) {
+    const log = jget('log', []);
+    log.push({ t: type, a: artists || '', ts: Date.now() });
+    jset('log', log.slice(-2000));
+  }
+  function pushHistory(item) {
+    const h = jget('hist', []).filter(x => !(x.uri === item.uri && x.playlistId === item.playlistId));
+    h.unshift({ uri: item.uri, name: item.name, artists: item.artists, playlistId: item.playlistId, playlistName: item.playlistName, ts: Date.now() });
+    jset('hist', h.slice(0, 20));
+  }
+
+  // ---------- "liked" playlist ----------
+  async function likesPlaylist() {
+    let id = store.get('likesId');
+    if (id) return id;
+    let path = '/me/playlists?limit=50';
+    for (let i = 0; i < 6 && path && !id; i++) {
+      const r = await api(path);
+      const f = (r?.items || []).find(p => p && p.name === LIKES_NAME && p.owner?.id === me.id);
+      if (f) id = f.id;
+      path = r?.next ? rel(r.next) : null;
+    }
+    if (!id) {
+      const body = JSON.stringify({ name: LIKES_NAME, public: false, description: 'שירים שאהבתי באפליקציית Swipe' });
+      let p;
+      try { p = await api('/me/playlists', { method: 'POST', body }); }
+      catch (e) { if (e.status === 404 || e.status === 405) p = await api(`/users/${me.id}/playlists`, { method: 'POST', body }); else throw e; }
+      id = p.id;
+      plList = null;
+    }
+    store.set('likesId', id);
+    return id;
+  }
+
+  async function addToLikes(t) {
+    if (likedSet.has(t.uri)) return true;
+    try {
+      const id = await likesPlaylist();
+      await api(`/playlists/${id}/items`, { method: 'POST', body: JSON.stringify({ uris: [t.uri] }) });
+      likedSet.add(t.uri); saveLiked();
+      return true;
+    } catch {
+      toast(`לא הצלחתי להוסיף ל„${LIKES_NAME}"`);
+      return false;
+    }
+  }
+
+  async function unlike(t) {
+    try {
+      const id = await likesPlaylist();
+      await api(`/playlists/${id}/items`, { method: 'DELETE', body: JSON.stringify({ items: [{ uri: t.uri }] }) });
+      likedSet.delete(t.uri); saveLiked();
+      toast('הוסר מהשירים שאהבת');
+    } catch { toast('לא הצלחתי לבטל'); }
+    setTimeout(render, 200);
+  }
+
+  // ---------- generic swipe ----------
+  // h: { left: fn|null, right: fn|null, busy: () => bool }
+  function attachSwipe(card, h) {
+    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false, armed = false;
+    const no = card.querySelector('.stamp.no'), yes = card.querySelector('.stamp.yes');
 
     card.addEventListener('pointerdown', e => {
-      if (busy) return;
-      dragging = true; decided = false; dx = 0;
+      if (h.busy()) return;
+      dragging = true; decided = false; dx = 0; armed = false;
       startX = e.clientX; startY = e.clientY;
       card.classList.remove('anim');
       card.setPointerCapture(e.pointerId);
@@ -334,33 +532,111 @@
         decided = true;
         if (Math.abs(my) > Math.abs(mx)) { dragging = false; return; } // vertical = ignore
       }
-      dx = current?.canEdit ? Math.min(mx, 30) : Math.max(Math.min(mx, 30), -40); // only left is meaningful
+      dx = mx;
+      if (!h.left && dx < -40) dx = -40;
+      if (!h.right && dx > 40) dx = 40;
       card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
-      stamp.style.opacity = current?.canEdit ? Math.min(1, -dx / 110) : 0;
+      const a = Math.min(1, Math.abs(dx) / 110);
+      if (no) no.style.opacity = h.left && dx < 0 ? a : 0;
+      if (yes) yes.style.opacity = h.right && dx > 0 ? a : 0;
+      const col = dx < 0 ? '255,77,94' : '30,215,96';
+      card.style.boxShadow = `0 20px 40px rgba(0,0,0,.45), 0 0 ${a * 46}px rgba(${col},${a * .7})`;
+      const over = (h.left && dx < -110) || (h.right && dx > 110);
+      if (over && !armed) { armed = true; haptic(10); } else if (!over) armed = false;
     });
     const end = () => {
       if (!dragging) return;
       dragging = false;
       card.classList.add('anim');
-      if (current?.canEdit && dx < -110) {
-        flyOut(card);
-        removeCurrent();
-      } else {
-        card.style.transform = '';
-        stamp.style.opacity = 0;
+      if (h.left && dx < -110) { flyOut(card, -1); haptic(25); h.left(); }
+      else if (h.right && dx > 110) { flyOut(card, 1); haptic(25); h.right(); }
+      else {
+        card.style.transform = ''; card.style.boxShadow = '';
+        if (no) no.style.opacity = 0; if (yes) yes.style.opacity = 0;
       }
     };
     card.addEventListener('pointerup', end);
     card.addEventListener('pointercancel', end);
   }
 
-  function flyOut(card) {
+  function flyOut(card, dir) {
+    if (!card) return;
     card.classList.add('anim');
-    card.style.transform = 'translateX(-140%) rotate(-24deg)';
+    card.style.transform = `translateX(${dir * 140}%) rotate(${dir * 24}deg)`;
     card.style.opacity = '0';
   }
 
-  // ---------- actions ----------
+  function cardHTML(t, { noText, extra, badge }) {
+    return `
+      <img src="${esc(t.image)}" alt="">
+      <div class="stamp no">${noText}</div>
+      <div class="stamp yes">אהבתי ♥</div>
+      ${badge ? `<div class="badge">${badge}</div>` : ''}
+      <div class="meta">
+        <div class="title">${esc(t.name)}</div>
+        <div class="artist">${esc(t.artists)}</div>
+        ${extra}
+      </div>`;
+  }
+
+  // ---------- now playing ----------
+  async function poll() {
+    if (busy) return;
+    try {
+      const d = await api('/me/player/currently-playing');
+      if (!d || !d.item || d.item.type !== 'track') { current = null; render(); return; }
+      if (current && current.uri === d.item.uri) return; // nothing changed
+      const t = d.item;
+      const next = { ...normTrack(t), playlistId: null, playlistName: null, canEdit: false };
+      if (d.context?.type === 'playlist') {
+        next.playlistId = d.context.uri.split(':').pop();
+        const info = await playlistInfo(next.playlistId);
+        next.playlistName = info.name;
+        next.canEdit = info.canEdit;
+      }
+      current = next;
+      tint(current.image);
+      render();
+    } catch (e) {
+      if (e.status === 429) { stopPolling(); setTimeout(() => { if (currentScreen === 'player') startPolling(); }, 15000); }
+      else if (e.message === 'not logged in') logout();
+    }
+  }
+  function startPolling() { stopPolling(); poll(); pollTimer = setInterval(poll, 3000); }
+  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopPolling(); else if (currentScreen === 'player') startPolling();
+  });
+
+  function render() {
+    const stage = $('stage');
+    stage.innerHTML = '';
+    const liked = !!current && likedSet.has(current.uri);
+    $('removeBtn').disabled = !(current && current.canEdit);
+    $('skipBtn').disabled = !current;
+    $('likeBtn').disabled = !current || liked;
+    if (!current) {
+      stage.innerHTML = '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶<br>או בחר פלייליסט בלשונית „פלייליסטים"</div>';
+      $('hint').textContent = '';
+      return;
+    }
+    let plLine;
+    if (!current.playlistId) plLine = 'השיר לא מתנגן מתוך פלייליסט – אפשר רק לדלג או לאהוב';
+    else if (!current.canEdit) plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b> – לא פלייליסט שלך, אפשר רק לדלג`;
+    else plLine = `מתנגן מ־<b>${esc(current.playlistName)}</b>`;
+    $('hint').textContent = (current.canEdit ? 'שמאלה = הסרה מהפלייליסט · ' : '') + (liked ? 'כבר שמור ב„אהבתי" 💚' : 'ימינה = אהבתי');
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = cardHTML(current, { noText: 'להסיר', extra: `<div class="pl">${plLine}</div>`, badge: liked ? '💚 שמור' : '' });
+    stage.appendChild(card);
+    attachSwipe(card, {
+      left: current.canEdit ? removeCurrent : null,
+      right: liked ? null : likeCurrent,
+      busy: () => busy
+    });
+  }
+
   async function removeCurrent() {
     if (!current?.canEdit || busy) return;
     busy = true;
@@ -370,6 +646,7 @@
         method: 'DELETE',
         body: JSON.stringify({ items: [{ uri: removed.uri }] })
       });
+      pushHistory(removed); logEvent('remove', removed.artists);
       try { await api('/me/player/next', { method: 'POST' }); } catch {}
       toast(`„${removed.name}" הוסר`, () => undoRemove(removed));
     } catch (e) {
@@ -387,18 +664,276 @@
         method: 'POST',
         body: JSON.stringify({ uris: [item.uri] })
       });
+      jset('hist', jget('hist', []).filter(x => !(x.uri === item.uri && x.playlistId === item.playlistId)));
       toast('השיר חזר לפלייליסט (בסוף הרשימה)');
+      return true;
     } catch {
       toast('לא הצלחתי להחזיר את השיר');
+      return false;
     }
+  }
+
+  async function likeCurrent() {
+    if (!current || busy) return;
+    const c = { ...current };
+    if (await addToLikes(c)) {
+      logEvent('like', c.artists);
+      toast(`נוסף ל„${LIKES_NAME}" 💚`, () => unlike(c));
+    }
+    setTimeout(render, 350);
   }
 
   async function skip() {
     if (!current || busy) return;
     busy = true;
-    try { await api('/me/player/next', { method: 'POST' }); }
+    try { await api('/me/player/next', { method: 'POST' }); logEvent('skip', current.artists); }
     catch { toast('הדילוג נכשל – ודא שספוטיפיי פתוח ומנגן'); }
     finally { busy = false; setTimeout(poll, 700); }
+  }
+
+  // ---------- history sheet ----------
+  function openHistory() {
+    const h = jget('hist', []);
+    $('histList').innerHTML = h.length ? h.map((x, i) => `
+      <div class="row"><div class="nm">${esc(x.name)}<small>${esc(x.artists)} · ${esc(x.playlistName || '')}</small></div>
+      <button class="g" data-i="${i}">החזר</button></div>`).join('') : '<div style="color:var(--muted)">עדיין לא הסרת שירים.</div>';
+    $('histList').querySelectorAll('button').forEach(b => b.onclick = async () => {
+      const item = jget('hist', [])[Number(b.dataset.i)];
+      if (item && await undoRemove(item)) openHistory();
+    });
+    $('sheet').hidden = false;
+  }
+
+  // ---------- playlists tab ----------
+  async function renderLists() {
+    const box = $('plRows');
+    try {
+      const pls = await loadPlaylists();
+      box.innerHTML = pls.map(p => `
+        <div class="row"><img src="${esc(p.image)}" alt="">
+          <div class="nm">${esc(p.name)}${p.own ? '' : '<small>לא שלך</small>'}</div>
+          <button class="g" data-play="${esc(p.id)}">▶ נגן</button>
+          ${p.own ? `<button data-disc="${esc(p.id)}">🔍</button>` : ''}
+        </div>`).join('') || 'לא נמצאו פלייליסטים';
+      box.querySelectorAll('[data-play]').forEach(b => b.onclick = () => playPlaylist(b.dataset.play));
+      box.querySelectorAll('[data-disc]').forEach(b => b.onclick = () => { $('dType').value = 'playlist'; syncDType(); show('discover'); $('dList').value = b.dataset.disc; });
+    } catch { box.textContent = 'לא הצלחתי לטעון את הפלייליסטים'; }
+  }
+
+  async function playPlaylist(id) {
+    try {
+      await api('/me/player/play', { method: 'PUT', body: JSON.stringify({ context_uri: 'spotify:playlist:' + id }) });
+      current = null;
+      show('player');
+    } catch (e) {
+      toast(e.status === 404 ? 'פתח את ספוטיפיי במכשיר כלשהו ונגן משהו, ואז נסה שוב' : 'ההפעלה נכשלה');
+    }
+  }
+
+  // ---------- stats tab ----------
+  function renderStats() {
+    const log = jget('log', []);
+    const week = log.filter(e => e.ts > Date.now() - 7 * 864e5);
+    const n = (arr, t) => arr.filter(e => e.t === t).length;
+    const dl = n(week, 'dlike'), ds = n(week, 'dskip');
+    const keptPct = dl + ds ? Math.round(dl * 100 / (dl + ds)) : 0;
+    const counts = {};
+    for (const e of log) if (e.t === 'remove' || e.t === 'dskip') for (const a of e.a.split(', ')) if (a) counts[a] = (counts[a] || 0) + 1;
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    $('statsBody').innerHTML = `
+      <div class="tiles">
+        <div class="tile"><b>${n(week, 'remove')}</b><span>הסרת השבוע</span></div>
+        <div class="tile"><b>${n(week, 'like') + dl}</b><span>אהבת השבוע</span></div>
+        <div class="tile"><b>${dl + ds}</b><span>שירים שהאזנת להם בגילוי</span></div>
+        <div class="tile"><b>${keptPct}%</b><span>מהם נשמרו</span></div>
+      </div>
+      <div class="top"><h3>האמנים שהכי הסרת / דילגת עליהם</h3>
+        ${top.length ? top.map(([a, c]) => `<div><span>${esc(a)}</span><span>${c}</span></div>`).join('') : '<span style="color:var(--muted)">עדיין אין נתונים</span>'}
+      </div>`;
+  }
+
+  // ---------- discover ----------
+  const D = { queue: [], seen: new Set(), cur: null, secs: 20, type: 'playlist', src: null, q: '', removeSrc: false,
+              timer: null, seq: 0, active: false, kept: 0, heard: 0, loading: false, pos: 0 };
+
+  function syncDType() {
+    const pl = $('dType').value === 'playlist';
+    $('dPlWrap').hidden = !pl; $('dQWrap').hidden = pl;
+  }
+  async function prepDiscover() {
+    if (D.active) { setDView(true); return; }
+    setDView(false);
+    $('dLfm').value = store.get('lfmKey') || '';
+    try {
+      const own = (await loadPlaylists()).filter(p => p.own);
+      const keep = $('dList').value;
+      $('dList').innerHTML = own.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      if (keep) $('dList').value = keep;
+    } catch {}
+  }
+  function setDView(run) { $('dSetup').hidden = run; $('dRun').hidden = !run; }
+
+  async function dStart() {
+    D.secs = Math.max(5, Math.min(60, Number($('dSecs').value) || 20));
+    D.type = $('dType').value;
+    D.queue = []; D.seen = new Set(); D.kept = 0; D.heard = 0; D.cur = null;
+    const lfm = $('dLfm').value.trim();
+    if (lfm) store.set('lfmKey', lfm); else store.del('lfmKey');
+    $('dStartBtn').disabled = true;
+    try {
+      if (D.type === 'playlist') {
+        const id = $('dList').value;
+        if (!id) { toast('בחר פלייליסט'); return; }
+        D.src = id;
+        D.removeSrc = (await playlistInfo(id)).canEdit && $('dRemove').checked;
+        D.queue = shuffle(await playlistTracks(id));
+      } else {
+        D.q = $('dQuery').value.trim();
+        if (!D.q) { toast('כתוב ז׳אנר, אמן או מילות חיפוש'); return; }
+        D.src = null; D.removeSrc = false;
+        for (let i = 0; i < 3 && D.queue.length < 5; i++) await dFill();
+      }
+      if (!D.queue.length) { toast('לא נמצאו שירים'); return; }
+      D.active = true;
+      setDView(true);
+      dNext();
+    } catch { toast('לא הצלחתי לטעון שירים'); }
+    finally { $('dStartBtn').disabled = false; }
+  }
+
+  async function dFill() {
+    const off = Math.floor(Math.random() * 20) * 10;
+    const r = await api(`/search?q=${enc(D.q)}&type=track&limit=10&offset=${off}`);
+    for (const x of r?.tracks?.items || []) {
+      const t = normTrack(x);
+      if (t && !D.seen.has(t.uri) && !D.queue.some(q => q.uri === t.uri)) D.queue.push(t);
+    }
+  }
+
+  async function dNext() {
+    clearTimeout(D.timer); D.seq++;
+    D.loading = true;
+    try {
+      if (D.type === 'search' && D.queue.length < 3) { for (let i = 0; i < 3 && D.queue.length < 5; i++) { try { await dFill(); } catch { break; } } }
+      const t = D.queue.shift();
+      if (!t) { D.cur = null; renderD(); return; }
+      D.seen.add(t.uri); D.cur = t; D.heard++;
+      renderD(); tint(t.image);
+      dPlay(t);
+    } finally { D.loading = false; }
+  }
+
+  function runBar() {
+    const i = document.getElementById('barI');
+    if (!i) return;
+    i.style.transition = 'none'; i.style.width = '0';
+    void i.offsetWidth;
+    i.style.transition = `width ${D.secs}s linear`; i.style.width = '100%';
+  }
+
+  async function dPlay(t, from) {
+    const seq = D.seq;
+    const start = from ?? Math.max(0, Math.min(Math.floor(t.duration * 0.4), t.duration - D.secs * 1000 - 3000));
+    try {
+      await api('/me/player/play', { method: 'PUT', body: JSON.stringify({ uris: [t.uri], position_ms: start }) });
+    } catch (e) {
+      toast(e.status === 404 ? 'פתח את ספוטיפיי במכשיר כלשהו ונגן משהו, ואז נסה שוב' : 'ההשמעה נכשלה (נדרש Premium)');
+      return;
+    }
+    if (seq !== D.seq) return;
+    D.pos = start;
+    runBar();
+    D.timer = setTimeout(() => {
+      if (seq !== D.seq) return;
+      api('/me/player/pause', { method: 'PUT' }).catch(() => {});
+      $('dHint').textContent = 'עצרתי · החלק ימינה לשמירה או שמאלה להבא';
+    }, D.secs * 1000);
+  }
+
+  function dPause() {
+    if (!D.active) return;
+    clearTimeout(D.timer); D.seq++;
+    api('/me/player/pause', { method: 'PUT' }).catch(() => {});
+  }
+
+  function renderD() {
+    const stage = $('dStage');
+    stage.innerHTML = '';
+    const t = D.cur;
+    $('dNo').disabled = $('dYes').disabled = $('dJump').disabled = !t;
+    if (!t) {
+      stage.innerHTML = `<div class="empty">נגמרו השירים 🎉<br>שמרת ${D.kept} מתוך ${D.heard}.<br><span style="font-size:13px">השירים ב„${esc(LIKES_NAME)}"</span></div>`;
+      $('dHint').textContent = '';
+      return;
+    }
+    $('dHint').textContent = `ימינה = אהבתי · שמאלה = ${D.removeSrc ? 'הסרה מהפלייליסט' : 'הבא'} · בתור: ${D.queue.length}${D.type === 'search' ? '+' : ''}`;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = cardHTML(t, {
+      noText: D.removeSrc ? 'להסיר' : 'הבא',
+      extra: '<div class="bar"><i id="barI"></i></div>',
+      badge: `${D.secs} שנ׳ מהאמצע`
+    });
+    stage.appendChild(card);
+    attachSwipe(card, { left: () => dDecide(false), right: () => dDecide(true), busy: () => D.loading });
+  }
+
+  async function dDecide(like) {
+    const t = D.cur;
+    if (!t || D.loading) return;
+    clearTimeout(D.timer);
+    if (like) {
+      D.kept++; logEvent('dlike', t.artists);
+      addToLikes(t).then(ok => { if (ok) toast(`נשמר ב„${LIKES_NAME}" 💚`); });
+      lastfmSimilar(t);
+    } else {
+      logEvent('dskip', t.artists);
+      if (D.removeSrc) {
+        const item = { ...t, playlistId: D.src, playlistName: playlistCache[D.src]?.name };
+        api(`/playlists/${D.src}/items`, { method: 'DELETE', body: JSON.stringify({ items: [{ uri: t.uri }] }) })
+          .then(() => { pushHistory(item); toast(`„${t.name}" הוסר`, () => undoRemove(item)); })
+          .catch(() => toast('ההסרה נכשלה'));
+      }
+    }
+    dNext();
+  }
+
+  function dBtn(like) {
+    const card = document.querySelector('#dStage .card');
+    if (D.loading || !D.cur) return;
+    flyOut(card, like ? 1 : -1); haptic(25);
+    dDecide(like);
+  }
+
+  async function dJump() {
+    const t = D.cur;
+    if (!t || D.loading) return;
+    clearTimeout(D.timer); D.seq++;
+    const pos = Math.max(0, Math.min(t.duration - D.secs * 1000 - 2000, (D.pos || 0) + Math.floor(t.duration * 0.25)));
+    dPlay(t, pos);
+  }
+
+  function dStop() {
+    dPause();
+    const msg = `שמרת ${D.kept} מתוך ${D.heard} שירים`;
+    D.active = false; D.cur = null;
+    setDView(false);
+    toast(msg);
+  }
+
+  async function lastfmSimilar(t) {
+    const key = store.get('lfmKey');
+    if (!key) return;
+    try {
+      const first = t.artists.split(', ')[0];
+      const r = await (await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${enc(first)}&track=${enc(t.name)}&limit=8&format=json&api_key=${enc(key)}`)).json();
+      const sims = r?.similartracks?.track || [];
+      const found = await Promise.all(sims.map(s =>
+        api(`/search?q=${enc(`track:${s.name} artist:${s.artist?.name}`)}&type=track&limit=1`)
+          .then(x => normTrack(x?.tracks?.items?.[0])).catch(() => null)));
+      const add = found.filter(x => x && !D.seen.has(x.uri) && !D.queue.some(q => q.uri === x.uri));
+      if (add.length) { D.queue.unshift(...add); if (D.active) toast(`הוספתי ${add.length} שירים דומים לתור 🎯`); }
+    } catch {}
   }
 
   // ---------- wiring ----------
@@ -415,14 +950,30 @@
   $('loginBtn').onclick = startLogin;
   $('resetId').onclick = () => { store.del('clientId'); show('setup'); };
   $('logout').onclick = logout;
+  $('histBtn').onclick = openHistory;
+  $('closeSheet').onclick = () => { $('sheet').hidden = true; };
+  $('sheet').onclick = e => { if (e.target === $('sheet')) $('sheet').hidden = true; };
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => show(b.dataset.tab));
+
   $('removeBtn').onclick = () => {
-    const card = document.querySelector('.card');
-    if (card && current?.canEdit) flyOut(card);
+    if (current?.canEdit) { flyOut(document.querySelector('#stage .card'), -1); haptic(25); }
     removeCurrent();
   };
   $('skipBtn').onclick = skip;
+  $('likeBtn').onclick = () => {
+    if (current && !likedSet.has(current.uri)) { flyOut(document.querySelector('#stage .card'), 1); haptic(25); }
+    likeCurrent();
+  };
+
+  $('dType').onchange = syncDType;
+  $('dStartBtn').onclick = dStart;
+  $('dNo').onclick = () => dBtn(false);
+  $('dYes').onclick = () => dBtn(true);
+  $('dJump').onclick = dJump;
+  $('dStop').onclick = dStop;
 
   // ---------- boot ----------
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   (async () => {
     if (!store.get('clientId')) { show('setup'); return; }
     try { await handleRedirect(); } catch (e) { toast('ההתחברות נכשלה: ' + e.message); }
@@ -430,7 +981,6 @@
     try {
       me = await api('/me');
       show('player');
-      startPolling();
     } catch (e) {
       toast('ההתחברות פגה, התחבר שוב');
       logout();
