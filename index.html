@@ -808,7 +808,7 @@
   async function dStart() {
     D.secs = Math.max(5, Math.min(60, Number($('dSecs').value) || 20));
     D.type = $('dType').value;
-    D.queue = []; D.seen = new Set(); D.kept = 0; D.heard = 0; D.cur = null;
+    D.queue = []; D.seen = new Set(); D.kept = 0; D.heard = 0; D.cur = null; D.device = null; D.waiting = false;
     const lfm = $('dLfm').value.trim();
     if (lfm) store.set('lfmKey', lfm); else store.del('lfmKey');
     $('dStartBtn').disabled = true;
@@ -863,13 +863,37 @@
     i.style.transition = `width ${D.secs}s linear`; i.style.width = '100%';
   }
 
+  // Find a Spotify Connect device (the phone app) to send playback commands to.
+  async function findDevice() {
+    try {
+      const ds = (await api('/me/player/devices'))?.devices || [];
+      const d = ds.find(x => x.is_active) || ds.find(x => /smartphone|tablet/i.test(x.type)) || ds[0];
+      return d?.id || null;
+    } catch { return null; }
+  }
+  // No device available: open the Spotify app, then retry automatically when the user comes back.
+  function wakeSpotify() {
+    D.waiting = true;
+    toast('פותח את ספוטיפיי… אחרי שהיא נפתחת, חזור לכאן');
+    setTimeout(() => { location.href = 'spotify://'; }, 700);
+  }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden || !D.waiting || !D.cur) return;
+    D.waiting = false;
+    for (let i = 0; i < 5 && !D.device; i++) { await new Promise(r => setTimeout(r, 1500)); D.device = await findDevice(); }
+    if (D.device) { D.seq++; dPlay(D.cur); }
+    else toast('ספוטיפיי עדיין לא זמינה – נגן בה שיר כלשהו וחזור לכאן');
+  });
+
   async function dPlay(t, from) {
     const seq = D.seq;
     const start = from ?? Math.max(0, Math.min(Math.floor(t.duration * 0.4), t.duration - D.secs * 1000 - 3000));
+    if (!D.device) D.device = await findDevice();
+    if (!D.device) { if (seq === D.seq) wakeSpotify(); return; }
     try {
-      await api('/me/player/play', { method: 'PUT', body: JSON.stringify({ uris: [t.uri], position_ms: start }) });
+      await api(`/me/player/play?device_id=${enc(D.device)}`, { method: 'PUT', body: JSON.stringify({ uris: [t.uri], position_ms: start }) });
     } catch (e) {
-      if (e.status === 404) toast('פתח את ספוטיפיי במכשיר כלשהו ונגן שיר כלשהו, ואז נסה שוב');
+      if (e.status === 404) { D.device = null; if (seq === D.seq) wakeSpotify(); }
       else errToast('ההשמעה נכשלה', e);
       return;
     }
