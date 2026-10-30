@@ -58,7 +58,12 @@
   .card { position: absolute; inset: 0; background: var(--surface); border-radius: var(--radius); overflow: hidden;
     touch-action: pan-y; user-select: none; cursor: grab; box-shadow: 0 20px 40px rgba(0,0,0,.45);
     display: flex; flex-direction: column; }
-  .card.anim { transition: transform .3s ease, opacity .3s ease; }
+  .card { will-change: transform; }
+  .card.anim { transition: transform .32s cubic-bezier(.2,.8,.25,1), opacity .32s ease; }
+  .card.leaving { pointer-events: none; z-index: 2; }
+  .card.enter { animation: cardIn .3s ease-out; }
+  @keyframes cardIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+  .glow { position: absolute; inset: 0; opacity: 0; pointer-events: none; z-index: 1; }
   .card img { width: 100%; aspect-ratio: 1; object-fit: cover; pointer-events: none; background: #2a2a2a; }
   .meta { padding: 16px 18px; flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
   .title { font-size: 21px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -120,7 +125,7 @@
 </head>
 <body>
 <header>
-  <h1>🎧 Playlist Swipe<span id="ver">v8</span></h1>
+  <h1>🎧 Playlist Swipe<span id="ver">v9</span></h1>
   <div class="hbtns">
     <button id="histBtn" hidden title="שירים שהסרת">🕘 היסטוריה</button>
     <button id="logout" hidden>התנתקות</button>
@@ -526,8 +531,8 @@
   // ---------- generic swipe ----------
   // h: { left: fn|null, right: fn|null, busy: () => bool }
   function attachSwipe(card, h) {
-    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false, armed = false;
-    const no = card.querySelector('.stamp.no'), yes = card.querySelector('.stamp.yes');
+    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false, armed = false, raf = 0;
+    const no = card.querySelector('.stamp.no'), yes = card.querySelector('.stamp.yes'), glow = card.querySelector('.glow');
 
     card.addEventListener('pointerdown', e => {
       if (h.busy()) return;
@@ -547,23 +552,32 @@
       dx = mx;
       if (!h.left && dx < -40) dx = -40;
       if (!h.right && dx > 40) dx = 40;
-      card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`;
+      if (!raf) raf = requestAnimationFrame(paint);   // at most one paint per frame
+    });
+    const paint = () => {
+      raf = 0;
+      if (!dragging) return;
+      card.style.transform = `translate3d(${dx}px,0,0) rotate(${dx / 18}deg)`;
       const a = Math.min(1, Math.abs(dx) / 110);
       if (no) no.style.opacity = h.left && dx < 0 ? a : 0;
       if (yes) yes.style.opacity = h.right && dx > 0 ? a : 0;
-      const col = dx < 0 ? '255,77,94' : '30,215,96';
-      card.style.boxShadow = `0 20px 40px rgba(0,0,0,.45), 0 0 ${a * 46}px rgba(${col},${a * .7})`;
+      if (glow) {
+        glow.style.background = dx < 0 ? 'rgba(255,77,94,.38)' : 'rgba(30,215,96,.32)';
+        glow.style.opacity = (dx < 0 ? h.left : h.right) ? a : 0;
+      }
       const over = (h.left && dx < -110) || (h.right && dx > 110);
       if (over && !armed) { armed = true; haptic(10); } else if (!over) armed = false;
-    });
+    };
     const end = () => {
       if (!dragging) return;
+      cancelAnimationFrame(raf); raf = 0;
       dragging = false;
       card.classList.add('anim');
       if (h.left && dx < -110) { flyOut(card, -1); haptic(25); h.left(); }
       else if (h.right && dx > 110) { flyOut(card, 1); haptic(25); h.right(); }
       else {
-        card.style.transform = ''; card.style.boxShadow = '';
+        card.style.transform = '';
+        if (glow) glow.style.opacity = 0;
         if (no) no.style.opacity = 0; if (yes) yes.style.opacity = 0;
       }
     };
@@ -573,14 +587,19 @@
 
   function flyOut(card, dir) {
     if (!card) return;
-    card.classList.add('anim');
-    card.style.transform = `translateX(${dir * 140}%) rotate(${dir * 24}deg)`;
+    card.classList.add('anim', 'leaving');
+    card.style.transform = `translate3d(${dir * 140}%,0,0) rotate(${dir * 24}deg)`;
     card.style.opacity = '0';
+    setTimeout(() => card.remove(), 400);
   }
+  // Clear the stage but let a card that is still flying out finish its animation.
+  function clearStage(stage) { stage.querySelectorAll(':scope > :not(.leaving)').forEach(n => n.remove()); }
+  function addCard(stage, card) { card.classList.add('enter'); stage.appendChild(card); }
 
   function cardHTML(t, { noText, extra, badge }) {
     return `
       <img src="${esc(t.image)}" alt="">
+      <div class="glow"></div>
       <div class="stamp no">${noText}</div>
       <div class="stamp yes">אהבתי ♥</div>
       ${badge ? `<div class="badge">${badge}</div>` : ''}
@@ -623,14 +642,14 @@
 
   function render() {
     const stage = $('stage');
-    stage.innerHTML = '';
+    clearStage(stage);
     const liked = !!current && likedSet.has(current.uri);
     $('removeBtn').disabled = !(current && current.canEdit);
     $('skipBtn').disabled = !current;
     $('pauseBtn').disabled = !current;
     $('likeBtn').disabled = !current || liked;
     if (!current) {
-      stage.innerHTML = '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶<br>או בחר פלייליסט בלשונית „פלייליסטים"</div>';
+      stage.insertAdjacentHTML('beforeend', '<div class="empty">שום דבר לא מתנגן כרגע.<br>פתח את ספוטיפיי והפעל פלייליסט שלך 🎶<br>או בחר פלייליסט בלשונית „פלייליסטים"</div>');
       $('hint').textContent = '';
       return;
     }
@@ -643,7 +662,7 @@
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = cardHTML(current, { noText: 'להסיר', extra: `<div class="pl">${plLine}</div>`, badge: liked ? '💚 שמור' : '' });
-    stage.appendChild(card);
+    addCard(stage, card);
     attachSwipe(card, {
       left: current.canEdit ? removeCurrent : null,
       right: liked ? null : likeCurrent,
@@ -958,12 +977,12 @@
 
   function renderD() {
     const stage = $('dStage');
-    stage.innerHTML = '';
+    clearStage(stage);
     const t = D.cur;
     $('dNo').disabled = $('dYes').disabled = $('dJump').disabled = $('dPause').disabled = !t;
     if (t) setPlaying(true);
     if (!t) {
-      stage.innerHTML = `<div class="empty">נגמרו השירים 🎉<br>שמרת ${D.kept} מתוך ${D.heard}.<br><span style="font-size:13px">השירים ב„${esc(LIKES_NAME)}"</span></div>`;
+      stage.insertAdjacentHTML('beforeend', `<div class="empty">נגמרו השירים 🎉<br>שמרת ${D.kept} מתוך ${D.heard}.<br><span style="font-size:13px">השירים ב„${esc(LIKES_NAME)}"</span></div>`);
       $('dHint').textContent = '';
       return;
     }
@@ -975,7 +994,7 @@
       extra: '<div class="bar"><i id="barI"></i></div>',
       badge: `${D.secs} שנ׳ מהאמצע`
     });
-    stage.appendChild(card);
+    addCard(stage, card);
     attachSwipe(card, { left: () => dDecide(false), right: () => dDecide(true), busy: () => D.loading });
   }
 
