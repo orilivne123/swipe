@@ -113,12 +113,14 @@
     opacity: 0; pointer-events: none; }
   .toast.on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
   .toast button { background: none; border: 0; color: #0a7d3b; font-weight: 800; font-size: 14px; cursor: pointer; }
+  .log { direction: rtl; text-align: right; font-size: 11px; color: var(--muted); white-space: pre-wrap; margin: 8px 0 0; max-height: 150px; overflow: auto; font-family: inherit; }
+  #ver { font-size: 11px; color: var(--muted); font-weight: 400; margin-inline-start: 6px; }
   .hap { position: fixed; opacity: 0; pointer-events: none; top: -50px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>🎧 Playlist Swipe</h1>
+  <h1>🎧 Playlist Swipe<span id="ver">v8</span></h1>
   <div class="hbtns">
     <button id="histBtn" hidden title="שירים שהסרת">🕘 היסטוריה</button>
     <button id="logout" hidden>התנתקות</button>
@@ -198,6 +200,7 @@
         <button class="round heart" id="dYes" title="אהבתי">♥</button>
       </div>
       <div class="hint" id="dHint"></div>
+      <pre class="log" id="dLog"></pre>
       <p><button class="btn ghost" id="dStop" style="margin-top:6px">סיום</button></p>
     </div>
   </section>
@@ -863,14 +866,23 @@
     i.style.transition = `width ${D.secs}s linear`; i.style.width = '100%';
   }
 
+  const dbgLines = [];
+  function dbg(m) {
+    dbgLines.push(new Date().toLocaleTimeString('he-IL') + ' ' + m);
+    if (dbgLines.length > 12) dbgLines.shift();
+    const el = $('dLog');
+    if (el) el.textContent = dbgLines.join('\n');
+  }
+
   // Find a Spotify Connect device (the phone app) to send playback commands to.
   async function findDevice() {
     try {
       const ds = (await api('/me/player/devices'))?.devices || [];
+      dbg('מכשירים: ' + (ds.map(x => `${x.name} (${x.type}${x.is_active ? ', פעיל' : ''})`).join(' | ') || 'אין'));
       const d = ds.find(x => x.is_active) || ds.find(x => /smartphone|tablet/i.test(x.type)) || ds[0];
       D.deviceName = d?.name || '';
       return d?.id || null;
-    } catch { return null; }
+    } catch (e) { dbg(`שגיאה בחיפוש מכשירים: ${e.status || ''} ${e.message}`); return null; }
   }
   // Sends the play command, then checks with Spotify that this track really is playing.
   // Returns true (playing), false (not playing / no device) or 'error' (already reported).
@@ -879,7 +891,9 @@
       try {
         if (attempt === 1) await api('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [D.device], play: false }) });
         await api(`/me/player/play?device_id=${enc(D.device)}`, { method: 'PUT', body: JSON.stringify({ uris: [t.uri], position_ms: start }) });
+        dbg(`נשלחה פקודת השמעה אל ${D.deviceName} (ניסיון ${attempt + 1})`);
       } catch (e) {
+        dbg(`שגיאת השמעה: ${e.status || ''} ${e.message}`);
         if (e.status === 404) return false;
         errToast('ההשמעה נכשלה', e);
         return 'error';
@@ -887,7 +901,8 @@
       for (let i = 0; i < 5; i++) {
         await new Promise(r => setTimeout(r, 800));
         if (seq !== D.seq) return true;
-        const s = await api('/me/player').catch(() => null);
+        const s = await api('/me/player').catch(e => { dbg(`שגיאה בבדיקת מצב: ${e.status || ''} ${e.message}`); return null; });
+        dbg(`מצב: ${s ? (s.is_playing ? 'מנגן' : 'לא מנגן') + ' · ' + (s.item?.name || '—') + ' · ' + (s.device?.name || '—') : 'אין נתונים'}`);
         if (s?.is_playing && s.item?.uri === t.uri) return true;
       }
     }
@@ -912,6 +927,7 @@
     const seq = D.seq;
     const start = from ?? Math.max(0, Math.min(Math.floor(t.duration * 0.4), t.duration - D.secs * 1000 - 3000));
     $('dHint').textContent = 'מתחבר לספוטיפיי…';
+    dbg('מתחיל: ' + t.name);
     if (!D.device) D.device = await findDevice();
     if (seq !== D.seq) return;
     if (!D.device) { wakeSpotify(); return; }

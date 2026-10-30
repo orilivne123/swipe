@@ -1,5 +1,5 @@
 // Network-first for the app shell so a new deploy always shows up; cache is only the offline fallback.
-const CACHE = 'swipe-v1';
+const CACHE = 'swipe-v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-180.png'];
 
 self.addEventListener('install', e => {
