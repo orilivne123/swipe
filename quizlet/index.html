@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>כרטיסיות לימוד</title>
+<style>
+:root{--bg:#0a092d;--card:#2e3856;--card2:#3d4a73;--text:#fff;--mute:#a9b2d0;--blue:#4255ff;--green:#23b26d;--red:#ff725b;--yellow:#ffcd1f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Arial,sans-serif;min-height:100vh}
+.wrap{max-width:720px;margin:0 auto;padding:16px 16px 60px}
+h1{font-size:24px;margin:8px 0 16px}h2{font-size:20px}
+button,.btn{font:inherit;color:var(--text);background:var(--card2);border:0;border-radius:12px;padding:12px 16px;cursor:pointer}
+button.primary{background:var(--blue);font-weight:700}
+button.good{background:var(--green)}button.bad{background:var(--red)}
+button:disabled{opacity:.4}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1}
+.set{background:var(--card);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer}
+.set small{color:var(--mute)}
+textarea,input{width:100%;font:inherit;color:var(--text);background:var(--card);border:2px solid var(--card2);border-radius:12px;padding:12px}
+textarea{min-height:200px}
+.top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.top button{flex:0 0 auto}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.modes button{padding:22px 8px;font-size:17px;background:var(--card)}
+.fc{perspective:1000px;height:300px;margin:14px 0;cursor:pointer}
+.fc>div{position:relative;width:100%;height:100%;transition:transform .45s;transform-style:preserve-3d}
+.fc.flip>div{transform:rotateX(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;background:var(--card);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:32px;padding:20px;text-align:center;word-break:break-word}
+.face.back{transform:rotateX(180deg)}
+.prog{height:6px;background:var(--card);border-radius:3px;margin:8px 0}
+.prog i{display:block;height:100%;background:var(--blue);border-radius:3px;transition:width .3s}
+.q{background:var(--card);border-radius:16px;padding:26px 16px;font-size:30px;text-align:center;margin:12px 0;word-break:break-word}
+.opts{display:grid;gap:10px}
+.opts button{padding:16px;font-size:18px;background:var(--card)}
+.opts button.ok{background:var(--green)}.opts button.no{background:var(--red)}
+.edit{display:grid;grid-template-columns:1fr 1fr 36px;gap:6px;margin-bottom:6px}
+.edit input{padding:10px}
+.edit button{padding:0;background:none;color:var(--red)}
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.m-grid button{min-height:70px;background:var(--card);font-size:16px;word-break:break-word}
+.m-grid button.sel{outline:3px solid var(--yellow)}
+.m-grid button.done{visibility:hidden}
+.m-grid button.wrong{background:var(--red)}
+.big{font-size:48px;text-align:center;margin:20px 0;font-weight:700}
+.mute{color:var(--mute)}
+.pill{display:inline-block;background:var(--card2);border-radius:20px;padding:4px 12px;font-size:14px}
+.wl{display:flex;justify-content:space-between;gap:10px;background:var(--card);border-radius:12px;padding:12px;margin-bottom:6px}
+.wl b{direction:ltr}
+.wl.wrongrow{border-right:4px solid var(--red)}
+label.chk{display:flex;gap:8px;align-items:center;margin:8px 0}
+label.chk input{width:auto}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+// ---------- אחסון ----------
+const KEY='quizlet-clone-sets';
+let sets=[];try{sets=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){}
+const save=()=>localStorage.setItem(KEY,JSON.stringify(sets));
+const $=s=>document.querySelector(s);
+const app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const shuffle=a=>{a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const uid=()=>Math.random().toString(36).slice(2,9);
+let cur=null; // הסט הנוכחי
+const norm=s=>String(s).toLowerCase().replace(/[\s.,!?'"־\-()]/g,'');
+const speak=t=>{try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=.85;speechSynthesis.speak(u)}catch(e){}};
+
+// ---------- תרגום ----------
+async function translate(word){
+  try{
+    const r=await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=iw&dt=t&q='+encodeURIComponent(word));
+    const j=await r.json();const t=j[0].map(x=>x[0]).join('').trim();if(t)return t;
+  }catch(e){}
+  try{
+    const r=await fetch('https://api.mymemory.translated.net/get?langpair=en|he&q='+encodeURIComponent(word));
+    const j=await r.json();const t=(j.responseData.translatedText||'').trim();if(t)return t;
+  }catch(e){}
+  return '';
+}
+
+// ---------- תמונה -> מילים ----------
+const isHe=s=>/[\u0590-\u05FF]/.test(s), isEn=s=>/[A-Za-z]/.test(s);
+async function ocr(files){
+  if(!files.length)return;
+  if(!window.Tesseract){alert('לא נטען רכיב זיהוי התמונה. בדוק חיבור לאינטרנט ורענן.');return}
+  const st=$('#st'),out=[];
+  try{
+    for(let k=0;k<files.length;k++){
+      st.textContent=`קורא תמונה ${k+1}/${files.length}... (בפעם הראשונה זה לוקח כחצי דקה)`;
+      const r=await Tesseract.recognize(files[k],'eng+heb',{logger:m=>{if(m.status==='recognizing text')st.textContent=`קורא תמונה ${k+1}/${files.length}... ${Math.round(m.progress*100)}%`}});
+      let last=null;
+      for(let line of r.data.text.split('\n')){
+        line=line.replace(/[|_•·●■□\[\]{}]/g,' ').replace(/^\s*\d+[.)]\s*/,'').replace(/\s+/g,' ').trim();
+        if(line.length<2)continue;
+        if(isEn(line)&&isHe(line)){ // מילה ותרגום באותה שורה
+          const en=line.replace(/[\u0590-\u05FF][\u0590-\u05FF\s'"״׳.,-]*/g,' ').replace(/[^A-Za-z\s'-]/g,' ').replace(/\s+/g,' ').trim();
+          const he=(line.match(/[\u0590-\u05FF][\u0590-\u05FF\s'"״׳,-]*/g)||[]).join(' ').trim();
+          if(en){out.push(en+' - '+he);last=null}
+        }else if(isEn(line)){const en=line.replace(/[^A-Za-z\s'-]/g,' ').replace(/\s+/g,' ').trim();if(en){out.push(en);last=out.length-1}}
+        else if(isHe(line)&&last!==null&&!out[last].includes(' - ')){out[last]+=' - '+line;last=null}
+      }
+    }
+  }catch(e){st.textContent='הזיהוי נכשל, נסה תמונה חדה ומוארת יותר';return}
+  const ta=$('#words');ta.value=(ta.value.trim()?ta.value.trim()+'\n':'')+out.join('\n');
+  st.textContent=out.length?`זוהו ${out.length} שורות. תקן מה שצריך למעלה ולחץ "צור כרטיסיות".`:'לא זוהה טקסט. נסה תמונה חדה יותר.';
+}
+
+// ---------- מסך ראשי ----------
+function home(){
+  cur=null;
+  app.innerHTML=`<h1>📚 הסטים שלי</h1>
+  <button class="primary" style="width:100%;margin-bottom:14px" onclick="create()">➕ סט חדש</button>
+  ${sets.map(s=>`<div class="set" onclick="openSet('${s.id}')"><b>${esc(s.name)}</b><br><small>${s.cards.length} מילים</small></div>`).join('')||'<p class="mute">עוד אין סטים. לחץ על "סט חדש" והדבק את המילים.</p>'}`;
+}
+
+function create(){
+  app.innerHTML=`<div class="top"><button onclick="home()">→ חזרה</button><h2 style="margin:0">סט חדש</h2></div>
+  <input id="nm" placeholder="שם הסט (למשל: יחידה 5)">
+  <p class="mute">הדבק מילים באנגלית, מילה בכל שורה. אפשר גם לכתוב תרגום בעצמך: <b dir="ltr">apple - תפוח</b>. מה שאין לו תרגום יתורגם אוטומטית.</p>
+  <input type="file" id="pic" accept="image/*" multiple hidden onchange="ocr(this.files)">
+  <button style="width:100%;margin-bottom:10px" onclick="$('#pic').click()">📷 צלם / בחר תמונה של מילים</button>
+  <textarea id="words" dir="ltr" placeholder="apple&#10;beautiful&#10;achieve - להשיג"></textarea>
+  <button class="primary" style="width:100%;margin-top:10px" id="go" onclick="build()">צור כרטיסיות</button>
+  <p id="st" class="mute"></p>`;
+}
+
+async function build(){
+  const lines=$('#words').value.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length)return;
+  $('#go').disabled=true;
+  const cards=lines.map(l=>{
+    const m=l.match(/^(.+?)\s*(?:[-–—=:\t]|,)\s*(.+)$/);
+    return m?{id:uid(),en:m[1].trim(),he:m[2].trim()}:{id:uid(),en:l,he:''};
+  });
+  const todo=cards.filter(c=>!c.he);let done=0;
+  const worker=async()=>{while(todo.length){const c=todo.shift();c.he=await translate(c.en);done++;$('#st').textContent=`מתרגם... ${done}`}};
+  await Promise.all([worker(),worker(),worker(),worker()]);
+  const s={id:uid(),name:$('#nm').value.trim()||'סט חדש',cards};
+  sets.unshift(s);save();
+  editSet(s.id,true);
+}
+
+function openSet(id){
+  cur=sets.find(s=>s.id===id);
+  app.innerHTML=`<div class="top"><button onclick="home()">→</button><h2 style="margin:0;flex:1">${esc(cur.name)}</h2><button onclick="editSet('${cur.id}')">✏️ עריכה</button></div>
+  <span class="pill">${cur.cards.length} מילים</span>
+  <div class="modes">
+    <button onclick="startFlash()">🃏 כרטיסיות</button>
+    <button onclick="startLearn()">🧠 למידה</button>
+    <button onclick="startTest()">📝 מבחן</button>
+    <button onclick="startMatch()">🧩 התאמה</button>
+  </div>
+  <label class="chk"><input type="checkbox" id="dir" ${localStorage.dirHE?'checked':''} onchange="localStorage.dirHE=this.checked?1:''"> התחל מעברית (עברית ← אנגלית)</label>
+  <h3>כל המילים</h3>
+  ${cur.cards.map(c=>`<div class="wl"><b>${esc(c.en)} <span style="cursor:pointer" onclick="speak('${esc(c.en).replace(/'/g,"\\'")}')">🔊</span></b><span>${esc(c.he)}</span></div>`).join('')}`;
+}
+const dirHE=()=>{const e=$('#dir');return e?e.checked:!!localStorage.dirHE};
+const front=(c,he)=>he?c.he:c.en, back=(c,he)=>he?c.en:c.he;
+
+// ---------- עריכה ----------
+function editSet(id,fresh){
+  cur=sets.find(s=>s.id===id);
+  app.innerHTML=`<div class="top"><button onclick="openSet('${id}')">→</button><h2 style="margin:0">${fresh?'בדוק את התרגומים':'עריכת סט'}</h2></div>
+  <input id="nm" value="${esc(cur.name)}" oninput="cur.name=this.value;save()">
+  <p class="mute">תקן תרגומים שנראים לא נכון (תרגום אוטומטי יכול לטעות).</p>
+  <div id="list"></div>
+  <div class="row"><button onclick="addRow()">➕ מילה</button><button class="primary" onclick="openSet('${id}')">סיום</button></div>
+  <button class="bad" style="width:100%;margin-top:24px" onclick="del('${id}')">🗑 מחק סט</button>`;
+  renderRows();
+}
+function renderRows(){
+  $('#list').innerHTML=cur.cards.map((c,i)=>`<div class="edit"><input dir="ltr" value="${esc(c.en)}" oninput="cur.cards[${i}].en=this.value;save()"><input value="${esc(c.he)}" oninput="cur.cards[${i}].he=this.value;save()"><button onclick="cur.cards.splice(${i},1);save();renderRows()">✕</button></div>`).join('');
+}
+function addRow(){cur.cards.push({id:uid(),en:'',he:''});save();renderRows()}
+function del(id){if(confirm('למחוק את הסט?')){sets=sets.filter(s=>s.id!==id);save();home()}}
+
+// ---------- כרטיסיות ----------
+let F;
+function startFlash(){F={he:dirHE(),deck:[...cur.cards],i:0,known:new Set(),unk:[]};flash()}
+function flash(){
+  if(F.i>=F.deck.length){
+    const u=F.deck.filter(c=>!F.known.has(c.id));
+    app.innerHTML=`<div class="top"><button onclick="openSet('${cur.id}')">→</button></div><div class="big">🎉</div>
+    <p style="text-align:center;font-size:20px">ידעת ${F.known.size} מתוך ${F.deck.length}</p>
+    ${u.length?`<button class="primary" style="width:100%;margin-bottom:8px" onclick="F.deck=shuffle(F.deck.filter(c=>!F.known.has(c.id)));F.i=0;flash()">חזור רק על ${u.length} שלא ידעתי</button>`:''}
+    <button style="width:100%" onclick="startFlash()">התחל מחדש</button>`;return;
+  }
+  const c=F.deck[F.i];
+  app.innerHTML=`<div class="top"><button onclick="openSet('${cur.id}')">→</button><span style="flex:1;text-align:center" class="mute">${F.i+1} / ${F.deck.length}</span><button onclick="F.deck=shuffle(F.deck);F.i=0;flash()">🔀</button></div>
+  <div class="prog"><i style="width:${F.i/F.deck.length*100}%"></i></div>
+  <div class="fc" id="fc" onclick="this.classList.toggle('flip')"><div><div class="face" dir="auto">${esc(front(c,F.he))}</div><div class="face back" dir="auto">${esc(back(c,F.he))}</div></div></div>
+  <div class="row" style="margin-bottom:10px"><button onclick="speak('${esc(c.en).replace(/'/g,"\\'")}')">🔊 השמע</button><button onclick="F.he=!F.he;flash()">⇄ הפוך כיוון</button></div>
+  <div class="row"><button class="bad" onclick="F.i++;flash()">✗ לא ידעתי</button><button class="good" onclick="F.known.add('${c.id}');F.i++;flash()">✓ ידעתי</button></div>
+  <p class="mute" style="text-align:center">לחץ על הכרטיס כדי להפוך אותו</p>`;
+  if(!F.he)speak(c.en);
+}
+
+// ---------- למידה ----------
+let L;
+function startLearn(){
+  const he=dirHE();
+  L={he,pool:shuffle(cur.cards).map(c=>({c,lvl:0})),total:cur.cards.length,done:0,wrong:0};
+  learnNext();
+}
+function mcOpts(c,he,n=4){
+  const others=shuffle(cur.cards.filter(x=>x.id!==c.id&&back(x,he)!==back(c,he))).slice(0,n-1);
+  return shuffle([c,...others]);
+}
+function learnNext(){
+  if(!L.pool.length){
+    app.innerHTML=`<div class="big">🎉</div><p style="text-align:center;font-size:20px">סיימת ללמוד את כל ${L.total} המילים!<br><span class="mute">טעויות בדרך: ${L.wrong}</span></p>
+    <button class="primary" style="width:100%;margin-bottom:8px" onclick="startLearn()">שוב</button><button style="width:100%" onclick="openSet('${cur.id}')">חזרה לסט</button>`;return;
+  }
+  const it=L.pool[0],c=it.c,he=L.he;
+  const written=it.lvl>=1; // אחרי תשובה נכונה אחת עוברים לכתיבה
+  app.innerHTML=`<div class="top"><button onclick="openSet('${cur.id}')">→</button><span style="flex:1;text-align:center" class="mute">נלמדו ${L.done} / ${L.total}</span></div>
+  <div class="prog"><i style="width:${L.done/L.total*100}%"></i></div>
+  <div class="q" dir="auto">${esc(front(c,he))}</div>
+  ${written?`<input id="ans" ${he?'dir="ltr"':''} placeholder="${he?'כתוב באנגלית':'כתוב בעברית'}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="primary" style="width:100%;margin-top:8px" id="chk">בדוק</button><div id="fb"></div>`
+  :`<div class="opts">${mcOpts(c,he).map(o=>`<button data-id="${o.id}">${esc(back(o,he))}</button>`).join('')}</div><div id="fb"></div>`}`;
+  if(!he)speak(c.en);
+  const result=ok=>{
+    if(ok){L.pool.shift();it.lvl++;if(it.lvl>=2)L.done++;else L.pool.splice(Math.min(3,L.pool.length),0,it)}
+    else{L.wrong++;it.lvl=0;L.pool.shift();L.pool.splice(Math.min(2,L.pool.length),0,it)}
+  };
+  if(written){
+    const check=()=>{
+      const a=$('#ans').value,right=back(c,he);
+      const ok=norm(a)===norm(right);
+      $('#chk').disabled=true;$('#ans').disabled=true;
+      $('#fb').innerHTML=`<p style="font-size:20px;color:var(${ok?'--green':'--red'})">${ok?'✓ נכון!':'✗ התשובה: '+esc(right)}</p><button class="primary" style="width:100%" id="nx">המשך</button>`;
+      $('#nx').onclick=()=>{result(ok);learnNext()};$('#nx').focus();
+    };
+    $('#chk').onclick=check;$('#ans').addEventListener('keydown',e=>{if(e.key==='Enter')check()});$('#ans').focus();
+  }else{
+    document.querySelectorAll('.opts button').forEach(b=>b.onclick=()=>{
+      const ok=b.dataset.id===c.id;
+      document.querySelectorAll('.opts button').forEach(x=>{x.disabled=true;if(x.dataset.id===c.id)x.classList.add('ok')});
+      if(!ok)b.classList.add('no');
+      setTimeout(()=>{result(ok);learnNext()},ok?600:1600);
+    });
+  }
+}
+
+// ---------- מבחן ----------
+let T;
+function startTest(){
+  const n=cur.cards.length;
+  app.innerHTML=`<div class="top"><button onclick="openSet('${cur.id}')">→</button><h2 style="margin:0">הגדרות מבחן</h2></div>
+  <label class="chk">מספר שאלות <input id="tn" type="number" min="1" max="${n}" value="${Math.min(n,20)}" style="width:90px"></label>
+  <label class="chk"><input type="checkbox" id="t1" checked> אמריקאיות</label>
+  <label class="chk"><input type="checkbox" id="t2" checked> נכון / לא נכון</label>
+  <label class="chk"><input type="checkbox" id="t3" checked> כתיבה</label>
+  <button class="primary" style="width:100%;margin-top:12px" onclick="runTest()">התחל מבחן</button>`;
+}
+function runTest(){
+  const types=[1,2,3].filter(i=>$('#t'+i).checked);if(!types.length)return;
+  const n=Math.max(1,Math.min(cur.cards.length,+$('#tn').value||10)),he=dirHE();
+  const cs=shuffle(cur.cards).slice(0,n);
+  T={he,i:0,score:0,wrong:[],qs:cs.map((c,k)=>{
+    let t=types[k%types.length];
+    if(t===1&&cur.cards.length<2)t=3;
+    if(t===2&&cur.cards.length<2)t=3;
+    const q={c,t};
+    if(t===1)q.opts=mcOpts(c,he);
+    if(t===2){const other=shuffle(cur.cards.filter(x=>x.id!==c.id))[0];q.truth=Math.random()<.5;q.shown=q.truth?c:other}
+    return q}).sort(()=>Math.random()-.5)};
+  testQ();
+}
+function testQ(){
+  if(T.i>=T.qs.length){
+    const pct=Math.round(T.score/T.qs.length*100);
+    app.innerHTML=`<div class="big">${pct>=90?'🏆':pct>=60?'👍':'💪'} ${pct}%</div><p style="text-align:center;font-size:20px">${T.score} נכון מתוך ${T.qs.length}</p>
+    ${T.wrong.length?`<h3>מה שטעית בו</h3>${T.wrong.map(c=>`<div class="wl wrongrow"><b>${esc(c.en)}</b><span>${esc(c.he)}</span></div>`).join('')}`:''}
+    <button class="primary" style="width:100%;margin:12px 0 8px" onclick="startTest()">מבחן חדש</button><button style="width:100%" onclick="openSet('${cur.id}')">חזרה לסט</button>`;return;
+  }
+  const q=T.qs[T.i],c=q.c,he=T.he;
+  const head=`<div class="top"><button onclick="openSet('${cur.id}')">→</button><span style="flex:1;text-align:center" class="mute">${T.i+1} / ${T.qs.length}</span></div><div class="prog"><i style="width:${T.i/T.qs.length*100}%"></i></div>`;
+  const finish=(ok,right,btns)=>{
+    if(ok)T.score++;else T.wrong.push(c);
+    return right};
+  const next=()=>{T.i++;testQ()};
+  if(q.t===1){
+    app.innerHTML=head+`<div class="q" dir="auto">${esc(front(c,he))}</div><div class="opts">${q.opts.map(o=>`<button data-id="${o.id}">${esc(back(o,he))}</button>`).join('')}</div>`;
+    document.querySelectorAll('.opts button').forEach(b=>b.onclick=()=>{
+      const ok=b.dataset.id===c.id;finish(ok);
+      document.querySelectorAll('.opts button').forEach(x=>{x.disabled=true;if(x.dataset.id===c.id)x.classList.add('ok')});
+      if(!ok)b.classList.add('no');setTimeout(next,ok?500:1400);
+    });
+  }else if(q.t===2){
+    app.innerHTML=head+`<div class="q" dir="auto">${esc(front(c,he))}<hr style="border-color:var(--card2)"><span style="color:var(--yellow)">${esc(back(q.shown,he))}</span></div><p class="mute" style="text-align:center">האם התרגום נכון?</p>
+    <div class="row"><button class="bad" data-a="0">לא נכון</button><button class="good" data-a="1">נכון</button></div>`;
+    document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{
+      const ok=(b.dataset.a==='1')===q.truth;finish(ok);
+      app.insertAdjacentHTML('beforeend',`<p style="font-size:20px;text-align:center;color:var(${ok?'--green':'--red'})">${ok?'✓ נכון':'✗ טעית — התרגום הנכון: '+esc(back(c,he))}</p>`);
+      document.querySelectorAll('[data-a]').forEach(x=>x.disabled=true);setTimeout(next,ok?500:1600);
+    });
+  }else{
+    app.innerHTML=head+`<div class="q" dir="auto">${esc(front(c,he))}</div><input id="ans" ${he?'dir="ltr"':''} placeholder="${he?'כתוב באנגלית':'כתוב בעברית'}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"><button class="primary" style="width:100%;margin-top:8px" id="chk">בדוק</button><div id="fb"></div>`;
+    const check=()=>{
+      const right=back(c,he),ok=norm($('#ans').value)===norm(right);finish(ok);
+      $('#chk').disabled=true;$('#ans').disabled=true;
+      $('#fb').innerHTML=`<p style="font-size:20px;color:var(${ok?'--green':'--red'})">${ok?'✓ נכון!':'✗ התשובה: '+esc(right)}</p>`;
+      setTimeout(next,ok?500:1600);
+    };
+    $('#chk').onclick=check;$('#ans').addEventListener('keydown',e=>{if(e.key==='Enter')check()});$('#ans').focus();
+  }
+}
+
+// ---------- התאמה ----------
+let M,mt;
+function startMatch(){
+  const cs=shuffle(cur.cards).slice(0,6);
+  M={cs,tiles:shuffle([...cs.map(c=>({id:c.id,t:c.en,k:'en'})),...cs.map(c=>({id:c.id,t:c.he,k:'he'}))]),sel:null,left:cs.length,t0:Date.now(),gone:new Set()};
+  clearInterval(mt);matchR();
+  mt=setInterval(()=>{const e=$('#tm');if(!e){clearInterval(mt);return}e.textContent=((Date.now()-M.t0)/1000).toFixed(1)},100);
+}
+function matchR(){
+  app.innerHTML=`<div class="top"><button onclick="clearInterval(mt);openSet('${cur.id}')">→</button><span style="flex:1;text-align:center;font-size:20px" id="tm">0.0</span></div>
+  <div class="m-grid">${M.tiles.map((t,i)=>`<button data-i="${i}" dir="auto" class="${M.gone.has(i)?'done':''} ${M.sel===i?'sel':''}">${esc(t.t)}</button>`).join('')}</div>`;
+  document.querySelectorAll('.m-grid button').forEach(b=>b.onclick=()=>{
+    const i=+b.dataset.i;
+    if(M.sel===null){M.sel=i;matchR();return}
+    if(M.sel===i){M.sel=null;matchR();return}
+    const a=M.tiles[M.sel],t=M.tiles[i];
+    if(a.id===t.id&&a.k!==t.k){
+      M.gone.add(M.sel);M.gone.add(i);M.sel=null;M.left--;
+      if(!M.left){clearInterval(mt);const s=((Date.now()-M.t0)/1000).toFixed(1);
+        app.innerHTML=`<div class="big">🎉 ${s} שניות</div><button class="primary" style="width:100%;margin-bottom:8px" onclick="startMatch()">שוב</button><button style="width:100%" onclick="openSet('${cur.id}')">חזרה לסט</button>`;return}
+      matchR();
+    }else{
+      b.classList.add('wrong');M.t0-=1000; // קנס שנייה
+      const first=document.querySelector(`[data-i="${M.sel}"]`);first&&first.classList.add('wrong');
+      M.sel=null;setTimeout(matchR,350);
+    }
+  });
+}
+
+home();
+</script>
+</body>
+</html>
